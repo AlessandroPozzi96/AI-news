@@ -30,9 +30,18 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 .items a.title{font-size:19px;font-weight:700;color:var(--text);text-decoration:none}
 .btn{display:inline-block;margin-top:24px;padding:10px 16px;border-radius:8px;border:1px solid var(--border);text-decoration:none;font-weight:600}
 footer{margin-top:20px;font-size:13px;color:var(--muted)}
+label{display:block;font-size:13px;font-weight:600;color:var(--muted);margin:12px 0 4px}
+input,select{width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font:inherit}
+button.btn{cursor:pointer;background:var(--accent);color:var(--card);border-color:var(--accent)}
+button.btn.ghost{background:transparent;color:var(--text);border-color:var(--border);margin:0;padding:4px 10px;font-size:13px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+td,th{text-align:left;padding:8px 6px;border-top:1px solid var(--border);vertical-align:top}
+th{font-size:12px;color:var(--muted);text-transform:uppercase;border-top:0}
+.msg{padding:8px 12px;border-radius:8px;background:var(--chip);color:var(--chip-text);margin:12px 0}
+.msg.err{background:var(--chip2);color:var(--chip2-text)}
 `
 
-function Layout(props: { lang: string; title: string; description?: string; children: Child }) {
+export function Layout(props: { lang: string; title: string; description?: string; children: Child }) {
   return (
     <html lang={props.lang}>
       <head>

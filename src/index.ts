@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import type { Env } from './env'
+import { adminRoutes } from './web/admin'
 import { unsubscribeRoutes } from './web/unsubscribe'
 import { webRoutes } from './web/routes'
 
@@ -11,6 +12,7 @@ const app = new Hono<{ Bindings: Env }>()
 
 app.route('/', webRoutes)
 app.route('/', unsubscribeRoutes)
+app.route('/', adminRoutes)
 
 app.get('/', (c) => c.text('Dev Agents Weekly'))
 

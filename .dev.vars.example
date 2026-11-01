@@ -11,3 +11,6 @@ UNSUBSCRIBE_SECRET=
 PUBLIC_BASE_URL=https://ai-news.devagents-weekly-news.workers.dev
 MAIL_FROM=Dev Agents Weekly <onboarding@resend.dev>
 ADMIN_EMAIL=
+
+# Dashboard login token (Worker secret: npx wrangler secret put ADMIN_TOKEN)
+ADMIN_TOKEN=

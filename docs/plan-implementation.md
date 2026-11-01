@@ -63,7 +63,9 @@ Principe : traiter d'abord le risque principal (la qualité du contenu généré
 - Réglages : jour/heure, fréquence, nombre d'éléments (5/10), langue.
 - Destinataires : ajout, suppression, activation.
 - Actions : prévisualiser le prochain numéro, « envoyer maintenant », relancer un échec, historique.
-- Protection par Cloudflare Access (repli si indisponible sur `workers.dev`).
+- Protection : jeton `ADMIN_TOKEN` (secret Worker, ≥ 16 caractères) + cookie de session signé (HttpOnly, SameSite=Strict, 7 jours) + contrôle d'`Origin` sur les POST. Sans jeton, `/admin` répond 404. Choisi plutôt que Cloudflare Access (configuration manuelle dans le dashboard, non vérifiable sur `workers.dev`).
+
+**État** : réglages, destinataires (ajout/désactivation/réactivation, pas de suppression : l'historique d'envoi y est lié), historique des numéros et exécutions codés et testés. Reste : « envoyer maintenant » et prévisualisation (à brancher sur `workflow_dispatch`, qui exige un jeton GitHub), puis déploiement avec le secret `ADMIN_TOKEN`.
 
 **Fait quand** : tout se règle depuis le navigateur et `/admin` est inaccessible sans connexion.
 
