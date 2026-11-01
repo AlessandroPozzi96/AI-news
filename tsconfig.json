@@ -11,5 +11,5 @@
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["src", "test", "test/env.d.ts", "worker-configuration.d.ts", "vitest.config.ts"]
+  "include": ["src", "scripts", "test", "test/env.d.ts", "worker-configuration.d.ts", "vitest.config.ts"]
 }
