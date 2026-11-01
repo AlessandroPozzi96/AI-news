@@ -54,6 +54,17 @@ export async function getIssue(db: D1Database, id: string): Promise<StoredIssue 
   }
 }
 
+/** `sending` makes the public pages reachable (mails carry links); `sent` is terminal. */
+export async function setIssueStatus(db: D1Database, id: string, status: 'sending' | 'sent'): Promise<void> {
+  const sql =
+    status === 'sent'
+      ? "UPDATE issues SET status = 'sent', sent_at = datetime('now') WHERE id = ?"
+      : "UPDATE issues SET status = 'sending' WHERE id = ?"
+  await db.prepare(sql).bind(id).run()
+}
+
+export const PUBLIC_STATUSES = ['sending', 'sent']
+
 /** Saves (or re-saves) a draft issue. A sent issue is immutable: its public links must not change. */
 export async function saveIssue(
   db: D1Database,

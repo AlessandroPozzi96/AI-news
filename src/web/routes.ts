@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { Language } from '../generate/types'
 import { ISSUE_ID_PATTERN } from '../issues/week'
-import { getIssue } from '../issues/store'
+import { getIssue, PUBLIC_STATUSES } from '../issues/store'
 import type { Links, RenderIssue } from '../render/shared'
 import { IssuePage, ItemPage, NotFoundPage, renderPage } from './pages'
 
@@ -33,8 +33,8 @@ export const webRoutes = new Hono<Env>()
 async function load(db: D1Database, id: string): Promise<{ issue: RenderIssue; sent: boolean } | null> {
   if (!ISSUE_ID_PATTERN.test(id)) return null
   const stored = await getIssue(db, id)
-  // Drafts are not public: only sent issues have shareable links.
-  if (!stored || stored.status !== 'sent') return null
+  // Drafts are not public: links only exist once the issue is going out.
+  if (!stored || !PUBLIC_STATUSES.includes(stored.status)) return null
   return {
     sent: true,
     issue: { id: stored.id, language: stored.language, items: stored.items, date: new Date(stored.sentAt ?? stored.createdAt) },

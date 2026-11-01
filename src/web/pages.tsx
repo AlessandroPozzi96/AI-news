@@ -162,6 +162,34 @@ export function NotFoundPage(props: { lang: 'fr' | 'en' }) {
   )
 }
 
+export function UnsubscribePage(props: {
+  lang: 'fr' | 'en'
+  state: 'confirm' | 'done' | 'invalid'
+  action?: string
+}) {
+  const t = LABELS[props.lang]
+  return (
+    <Layout lang={props.lang} title={`${t.unsubTitle} · ${BRAND}`}>
+      <div class="card">
+        <span class="brand">{BRAND}</span>
+        <h1>{t.unsubTitle}</h1>
+        {props.state === 'confirm' ? (
+          <>
+            <p>{t.unsubBody}</p>
+            <form method="post" action={props.action}>
+              <button class="btn" type="submit">
+                {t.unsubButton}
+              </button>
+            </form>
+          </>
+        ) : null}
+        {props.state === 'done' ? <p>{t.unsubDone}</p> : null}
+        {props.state === 'invalid' ? <p>{t.unsubInvalid}</p> : null}
+      </div>
+    </Layout>
+  )
+}
+
 export async function renderPage(node: { toString(): string | Promise<string> }): Promise<string> {
   return `<!DOCTYPE html>${await node.toString()}`
 }

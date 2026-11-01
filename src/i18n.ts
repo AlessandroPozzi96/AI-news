@@ -17,6 +17,11 @@ export type Labels = {
   footerNote: string
   weekLabel: string
   notFound: string
+  unsubTitle: string
+  unsubBody: string
+  unsubButton: string
+  unsubDone: string
+  unsubInvalid: string
 }
 
 export const LABELS: Record<Language, Labels> = {
@@ -41,6 +46,11 @@ export const LABELS: Record<Language, Labels> = {
     footerNote: 'Vous recevez cet e-mail car vous êtes abonné à cette newsletter.',
     weekLabel: 'Semaine',
     notFound: 'Page introuvable',
+    unsubTitle: 'Se désabonner',
+    unsubBody: 'Confirmez-vous ne plus vouloir recevoir cette newsletter ?',
+    unsubButton: 'Me désabonner',
+    unsubDone: 'Vous êtes désabonné. Vous ne recevrez plus cette newsletter.',
+    unsubInvalid: 'Ce lien de désinscription est invalide.',
   },
   en: {
     tagline: 'The week in AI agents for software developers',
@@ -63,6 +73,11 @@ export const LABELS: Record<Language, Labels> = {
     footerNote: 'You are receiving this email because you subscribed to this newsletter.',
     weekLabel: 'Week',
     notFound: 'Page not found',
+    unsubTitle: 'Unsubscribe',
+    unsubBody: 'Do you confirm you no longer want to receive this newsletter?',
+    unsubButton: 'Unsubscribe me',
+    unsubDone: 'You are unsubscribed. You will no longer receive this newsletter.',
+    unsubInvalid: 'This unsubscribe link is invalid.',
   },
 }
 

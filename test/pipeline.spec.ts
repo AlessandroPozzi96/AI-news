@@ -1,0 +1,255 @@
+import { applyD1Migrations, env, SELF } from 'cloudflare:test'
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { signUnsubscribeToken, verifyUnsubscribeToken } from '../src/mail/token'
+import { resendMailer } from '../src/mail/resend'
+import { runIfDue, runPipeline, type PipelineDeps } from '../src/pipeline/run'
+import { isDue, weekIdIn } from '../src/pipeline/schedule'
+import type { Settings } from '../src/pipeline/settings'
+import { candidate, collectorOf, fakeLlm, fakeMailer, longPage, triageOf, writerOk } from './helpers'
+
+const settings: Settings = {
+  sendDay: 5,
+  sendHour: 18,
+  timezone: 'Europe/Paris',
+  frequencyWeeks: 1,
+  itemsPerIssue: 5,
+  language: 'fr',
+}
+const FRIDAY_1800_SUMMER = new Date('2026-07-10T16:00:00Z') // UTC+2
+const FRIDAY_1800_WINTER = new Date('2026-10-30T17:00:00Z') // UTC+1
+const NOT_SENT = { currentWeekSent: false, lastSentAt: null }
+
+describe('schedule', () => {
+  it('opens at the configured Paris time in both summer and winter time', () => {
+    expect(isDue(FRIDAY_1800_SUMMER, settings, NOT_SENT)).toBe(true)
+    expect(isDue(FRIDAY_1800_WINTER, settings, NOT_SENT)).toBe(true)
+    expect(isDue(new Date('2026-07-10T15:59:00Z'), settings, NOT_SENT)).toBe(false)
+    expect(isDue(new Date('2026-10-30T16:59:00Z'), settings, NOT_SENT)).toBe(false)
+  })
+
+  it('catches up for 48 hours after a missed hour, then gives up', () => {
+    expect(isDue(new Date('2026-10-30T20:00:00Z'), settings, NOT_SENT)).toBe(true)
+    expect(isDue(new Date('2026-10-31T17:00:00Z'), settings, NOT_SENT)).toBe(true)
+    expect(isDue(new Date('2026-11-01T16:59:00Z'), settings, NOT_SENT)).toBe(true)
+    expect(isDue(new Date('2026-11-01T17:00:00Z'), settings, NOT_SENT)).toBe(false)
+    expect(isDue(new Date('2026-10-29T17:00:00Z'), settings, NOT_SENT)).toBe(false)
+  })
+
+  it('does not run twice in a week and honours the frequency', () => {
+    expect(isDue(FRIDAY_1800_WINTER, settings, { currentWeekSent: true, lastSentAt: null })).toBe(false)
+    const lastWeek = new Date('2026-10-23T17:05:00Z')
+    expect(isDue(FRIDAY_1800_WINTER, settings, { currentWeekSent: false, lastSentAt: lastWeek })).toBe(true)
+    expect(isDue(FRIDAY_1800_WINTER, { ...settings, frequencyWeeks: 2 }, { currentWeekSent: false, lastSentAt: lastWeek })).toBe(false)
+  })
+
+  it('dates the issue by the local calendar, not UTC', () => {
+    // Sunday 23:30 UTC is already Monday in Paris: next ISO week.
+    expect(weekIdIn(new Date('2026-11-01T23:30:00Z'), 'Europe/Paris')).toBe('2026-S45')
+    expect(weekIdIn(new Date('2026-11-01T23:30:00Z'), 'UTC')).toBe('2026-S44')
+  })
+})
+
+describe('unsubscribe token', () => {
+  it('round-trips and rejects tampering or another secret', async () => {
+    const token = await signUnsubscribeToken('s1', 42)
+    expect(await verifyUnsubscribeToken('s1', token)).toBe(42)
+    expect(await verifyUnsubscribeToken('s2', token)).toBeNull()
+    expect(await verifyUnsubscribeToken('s1', token.replace(/^42/, '43'))).toBeNull()
+    expect(await verifyUnsubscribeToken('s1', 'garbage')).toBeNull()
+    expect(await verifyUnsubscribeToken('s1', '')).toBeNull()
+  })
+})
+
+describe('resend mailer', () => {
+  it('posts a batch with auth, idempotency key and per-recipient messages', async () => {
+    let captured: { url: string; init: RequestInit } | undefined
+    const doFetch = (async (url: string, init: RequestInit) => {
+      captured = { url, init }
+      return new Response(JSON.stringify({ data: [{ id: 'a' }, { id: 'b' }] }))
+    }) as unknown as typeof fetch
+    const mailer = resendMailer('re_key', 'News <news@x.test>', doFetch)
+    const res = await mailer.sendBatch(
+      [
+        { to: 'a@x.test', subject: 'S', html: '<p>h</p>', text: 't' },
+        { to: 'b@x.test', subject: 'S', html: '<p>h</p>', text: 't', headers: { 'List-Unsubscribe': '<u>' } },
+      ],
+      'key-1',
+    )
+    expect(res).toEqual([{ id: 'a' }, { id: 'b' }])
+    expect(captured?.url).toBe('https://api.resend.com/emails/batch')
+    const headers = captured?.init.headers as Record<string, string>
+    expect(headers.Authorization).toBe('Bearer re_key')
+    expect(headers['Idempotency-Key']).toBe('key-1')
+    const body = JSON.parse(captured?.init.body as string)
+    expect(body[0]).toMatchObject({ from: 'News <news@x.test>', to: ['a@x.test'] })
+    expect(body[1].headers).toEqual({ 'List-Unsubscribe': '<u>' })
+  })
+
+  it('throws on HTTP errors and oversized batches', async () => {
+    const bad = (async () => new Response('nope', { status: 403 })) as unknown as typeof fetch
+    await expect(resendMailer('k', 'f', bad).sendBatch([{ to: 'a', subject: 's', html: 'h', text: 't' }], 'k')).rejects.toThrow('Resend HTTP 403')
+    const many = Array.from({ length: 101 }, () => ({ to: 'a', subject: 's', html: 'h', text: 't' }))
+    await expect(resendMailer('k', 'f', bad).sendBatch(many, 'k')).rejects.toThrow('limited')
+  })
+})
+
+const BASE = 'https://news.test'
+
+function deps(over: Partial<PipelineDeps> = {}): PipelineDeps & { mailer: ReturnType<typeof fakeMailer>; llm: ReturnType<typeof fakeLlm> } {
+  return {
+    db: env.DB,
+    llm: fakeLlm({ triage: triageOf(10), writer: writerOk }),
+    fetch: longPage,
+    mailer: fakeMailer(),
+    now: FRIDAY_1800_WINTER,
+    baseUrl: BASE,
+    unsubscribeSecret: 'test-secret',
+    adminEmail: 'admin@x.test',
+    collectors: [collectorOf(Array.from({ length: 12 }, (_, i) => candidate(i)))],
+    ...over,
+  } as PipelineDeps & { mailer: ReturnType<typeof fakeMailer>; llm: ReturnType<typeof fakeLlm> }
+}
+
+async function reset() {
+  for (const t of ['deliveries', 'items', 'runs', 'seen_urls', 'issues', 'subscribers']) {
+    await env.DB.prepare(`DELETE FROM ${t}`).run()
+  }
+  await env.DB.prepare("INSERT INTO subscribers (email) VALUES ('a@x.test'), ('b@x.test')").run()
+}
+
+describe('pipeline', () => {
+  beforeAll(async () => {
+    await applyD1Migrations(env.DB, env.TEST_MIGRATIONS)
+  })
+  beforeEach(reset)
+
+  it('generates, sends one personalised mail per subscriber and marks the issue sent', async () => {
+    const d = deps()
+    const res = await runPipeline(d)
+    expect(res).toMatchObject({ status: 'sent', issueId: '2026-S44', delivered: 2 })
+    expect(d.mailer.sent.map((m) => m.to)).toEqual(['a@x.test', 'b@x.test'])
+
+    const mail = d.mailer.sent[0]
+    expect(mail.html).toContain(`${BASE}/issue/2026-S44/1`)
+    expect(mail.headers?.['List-Unsubscribe-Post']).toBe('List-Unsubscribe=One-Click')
+    const unsub = mail.headers?.['List-Unsubscribe']?.slice(1, -1) as string
+    expect(unsub).toContain(`${BASE}/unsubscribe?token=`)
+    expect(d.mailer.sent[1].headers?.['List-Unsubscribe']).not.toBe(mail.headers?.['List-Unsubscribe'])
+
+    const issue = await env.DB.prepare('SELECT status, sent_at FROM issues').first<{ status: string; sent_at: string }>()
+    expect(issue?.status).toBe('sent')
+    expect(issue?.sent_at).toBeTruthy()
+    expect((await env.DB.prepare("SELECT COUNT(*) n FROM seen_urls WHERE published = 1").first<{ n: number }>())?.n).toBe(5)
+    const run = await env.DB.prepare('SELECT status, llm_cost_usd FROM runs').first<{ status: string; llm_cost_usd: number }>()
+    expect(run?.status).toBe('ok')
+    expect(run?.llm_cost_usd).toBeGreaterThan(0)
+  })
+
+  it('never sends the same issue twice', async () => {
+    const d = deps()
+    await runPipeline(d)
+    const again = await runPipeline(d)
+    expect(again).toMatchObject({ status: 'skipped', reason: 'already sent' })
+    expect(d.mailer.sent).toHaveLength(2)
+    expect((await runIfDue(d)).status).toBe('skipped')
+  })
+
+  it('skips inactive subscribers', async () => {
+    await env.DB.prepare("UPDATE subscribers SET active = 0 WHERE email = 'b@x.test'").run()
+    const d = deps()
+    await runPipeline(d)
+    expect(d.mailer.sent.map((m) => m.to)).toEqual(['a@x.test'])
+  })
+
+  it('resumes after a partial failure without regenerating or re-sending', async () => {
+    const mailer = fakeMailer({ failFor: ['b@x.test'] })
+    const d = deps({ mailer })
+    await expect(runPipeline(d)).rejects.toThrow('1 delivery(ies) failed')
+    // Only a@ got the issue; the admin got the failure alert.
+    expect(mailer.sent.map((m) => m.to)).toEqual(['a@x.test', 'admin@x.test'])
+    expect((await env.DB.prepare('SELECT status FROM issues').first<{ status: string }>())?.status).toBe('sending')
+    // The issue is already reachable by link: recipients who got the mail must not hit a 404.
+    expect((await SELF.fetch(`${BASE}/issue/2026-S44/1`)).status).toBe(200)
+    const llmCalls = d.llm.calls.length
+
+    mailer.failFor.clear()
+    const res = await runPipeline(d)
+    expect(res).toMatchObject({ status: 'sent', delivered: 2 })
+    expect(mailer.sent.filter((m) => m.to === 'a@x.test' && m.subject.startsWith('Dev Agents'))).toHaveLength(1)
+    expect(mailer.sent.filter((m) => m.to === 'b@x.test')).toHaveLength(1)
+    expect(d.llm.calls.length).toBe(llmCalls)
+  })
+
+  it('alerts the admin on failure and records the run', async () => {
+    const d = deps({ llm: fakeLlm({ triage: () => ({ picks: [] }), writer: writerOk }) })
+    await expect(runPipeline(d)).rejects.toThrow('No item could be generated')
+    const alert = d.mailer.sent.find((m) => m.to === 'admin@x.test')
+    expect(alert?.subject).toContain('Pipeline failed for 2026-S44')
+    expect(alert?.text).toContain('No item could be generated')
+    const run = await env.DB.prepare('SELECT status, error FROM runs').first<{ status: string; error: string }>()
+    expect(run?.status).toBe('failed')
+    expect(run?.error).toContain('nothing to send')
+  })
+
+  it('does not let a failing alert mask the real error', async () => {
+    const mailer = fakeMailer({ throwOnce: true })
+    const d = deps({ mailer, llm: fakeLlm({ triage: () => ({ picks: [] }), writer: writerOk }) })
+    await expect(runPipeline(d)).rejects.toThrow('No item could be generated')
+  })
+
+  it('stops automatic retries after repeated failures but still allows a manual run', async () => {
+    const bad = fakeLlm({ triage: () => ({ picks: [] }), writer: writerOk })
+    for (let i = 0; i < 3; i++) await expect(runIfDue(deps({ llm: bad }))).rejects.toThrow()
+    const stopped = await runIfDue(deps({ llm: bad }))
+    expect(stopped).toMatchObject({ status: 'skipped', reason: expect.stringContaining('too many failed attempts') })
+    expect((await runPipeline(deps())).status).toBe('sent')
+  })
+
+  it('ignores a run that is already in progress', async () => {
+    await env.DB.prepare("INSERT INTO runs (issue_id, status) VALUES ('2026-S44', 'running')").run()
+    const res = await runPipeline(deps())
+    expect(res).toMatchObject({ status: 'skipped', reason: 'another run is in progress' })
+  })
+
+  it('only runs from the cron when the send window is open', async () => {
+    const d = deps({ now: new Date('2026-10-28T10:00:00Z') })
+    expect(await runIfDue(d)).toMatchObject({ status: 'skipped', reason: 'not due' })
+    expect(d.mailer.sent).toHaveLength(0)
+    expect((await runIfDue(deps())).status).toBe('sent')
+  })
+})
+
+describe('unsubscribe routes', () => {
+  beforeAll(async () => {
+    await applyD1Migrations(env.DB, env.TEST_MIGRATIONS)
+  })
+  beforeEach(reset)
+
+  const idOf = async (email: string) =>
+    (await env.DB.prepare('SELECT id FROM subscribers WHERE email = ?').bind(email).first<{ id: number }>())?.id as number
+
+  it('GET only asks for confirmation and does not unsubscribe', async () => {
+    const token = await signUnsubscribeToken('test-secret', await idOf('a@x.test'))
+    const res = await SELF.fetch(`${BASE}/unsubscribe?token=${token}`)
+    expect(res.status).toBe(200)
+    expect(await res.text()).toContain('<form method="post"')
+    expect((await env.DB.prepare("SELECT active FROM subscribers WHERE email = 'a@x.test'").first<{ active: number }>())?.active).toBe(1)
+  })
+
+  it('POST unsubscribes only the token owner, and is idempotent', async () => {
+    const token = await signUnsubscribeToken('test-secret', await idOf('a@x.test'))
+    const res = await SELF.fetch(`${BASE}/unsubscribe?token=${token}`, { method: 'POST' })
+    expect(res.status).toBe(200)
+    expect((await env.DB.prepare("SELECT active FROM subscribers WHERE email = 'a@x.test'").first<{ active: number }>())?.active).toBe(0)
+    expect((await env.DB.prepare("SELECT active FROM subscribers WHERE email = 'b@x.test'").first<{ active: number }>())?.active).toBe(1)
+    expect((await SELF.fetch(`${BASE}/unsubscribe?token=${token}`, { method: 'POST' })).status).toBe(200)
+  })
+
+  it('rejects forged or missing tokens', async () => {
+    const forged = await signUnsubscribeToken('other-secret', await idOf('a@x.test'))
+    expect((await SELF.fetch(`${BASE}/unsubscribe?token=${forged}`, { method: 'POST' })).status).toBe(400)
+    expect((await SELF.fetch(`${BASE}/unsubscribe`, { method: 'POST' })).status).toBe(400)
+    expect((await SELF.fetch(`${BASE}/unsubscribe?token=x`)).status).toBe(400)
+    expect((await env.DB.prepare("SELECT active FROM subscribers WHERE email = 'a@x.test'").first<{ active: number }>())?.active).toBe(1)
+  })
+})
