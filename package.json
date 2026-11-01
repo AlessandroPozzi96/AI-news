@@ -1,0 +1,35 @@
+{
+  "name": "ai-news",
+  "version": "0.1.0",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "typecheck": "tsc",
+    "lint": "eslint .",
+    "db:migrate:local": "wrangler d1 migrations apply ai-news --local",
+    "db:migrate:remote": "wrangler d1 migrations apply ai-news --remote"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "hono": "^4.13.16"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.23.0",
+    "@cloudflare/workers-types": "^5.20261101.1",
+    "eslint": "^9.39.5",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^4.1.0",
+    "wrangler": "^4.156.0",
+    "@types/node": "^22.0.0"
+  },
+  "private": true,
+  "type": "module"
+}
