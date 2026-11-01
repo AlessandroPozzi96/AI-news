@@ -1,3 +1,13 @@
+# Local values for `npm run dry-run` and `npm run pipeline`. In CI these come from GitHub secrets/variables.
 ANTHROPIC_API_KEY=
 RESEND_API_KEY=
 GITHUB_TOKEN=
+
+# Needed only to run the pipeline locally against the real database
+CF_ACCOUNT_ID=
+CF_API_TOKEN=
+D1_DATABASE_ID=
+UNSUBSCRIBE_SECRET=
+PUBLIC_BASE_URL=https://ai-news.devagents-weekly-news.workers.dev
+MAIL_FROM=Dev Agents Weekly <onboarding@resend.dev>
+ADMIN_EMAIL=

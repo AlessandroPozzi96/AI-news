@@ -14,7 +14,8 @@
     "db:migrate:remote": "wrangler d1 migrations apply ai-news --remote",
     "collect": "tsx --env-file-if-exists=.dev.vars scripts/collect.ts",
     "dry-run": "tsx --env-file-if-exists=.dev.vars scripts/dry-run.ts",
-    "preview": "tsx scripts/preview.ts"
+    "preview": "tsx scripts/preview.ts",
+    "pipeline": "tsx --env-file-if-exists=.dev.vars scripts/pipeline.ts"
   },
   "keywords": [],
   "author": "",

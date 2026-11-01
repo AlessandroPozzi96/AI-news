@@ -1,6 +1,6 @@
 # Infrastructure et architecture
 
-Statut : décisions validées en discussion (aucun code écrit à ce jour).
+Statut : phases 1 à 4 réalisées ; phase 5 en cours. Révision du 2026-11-01 : le pipeline tourne sur GitHub Actions (voir « Changement d'architecture »).
 
 ## Contraintes
 
@@ -12,17 +12,17 @@ Statut : décisions validées en discussion (aucun code écrit à ce jour).
 
 | # | Décision | Raison |
 |---|----------|--------|
-| I1 | Hébergement tout-en-un sur **Cloudflare** (Workers, Cron Triggers, D1, Workflows) | Gratuit/à l'usage, un seul fournisseur, vraie base de données |
+| I1 | Côté web : **Cloudflare Workers + D1** (plan gratuit). Côté pipeline : **GitHub Actions** (gratuit) | Le plan gratuit de Cloudflare limite le CPU à 10 ms par exécution : insuffisant pour collecter et parser les flux |
 | I2 | Base de données : **Cloudflare D1** (SQLite managé) | Abonnés, configuration, numéros, éléments |
 | I3 | Envoi d'e-mails : **Resend** (API d'envoi, une requête par destinataire) | Simple, palier gratuit |
 | I4 | Génération de contenu : **API Anthropic**, derrière une interface LLM interchangeable | Qualité de rédaction ; alternatives gratuites possibles (Gemini, Workers AI) |
 | I5 | Front : **un seul Worker TypeScript avec Hono**, HTML rendu côté serveur (JSX), HTMX pour l'admin, pas de framework JS lourd | Un projet, un déploiement, pas de build front à maintenir |
 | I6 | E-mail : template HTML écrit à la main, styles en ligne | Compatibilité Gmail/Outlook |
-| I7 | Déclenchement : cron **toutes les heures** ; le Worker vérifie dans la config s'il est l'heure d'envoi (fuseau Europe/Paris) et si le numéro n'est pas déjà parti | Heure/jour modifiables sans toucher au cron ; gère heure d'été/hiver |
-| I8 | Pipeline exécuté dans **Cloudflare Workflows** (étapes avec retry) ; repli : enchaînement dans un seul Worker si indisponible en gratuit | Fiabilité |
+| I7 | Déclenchement : workflow GitHub Actions planifié **toutes les heures** ; le pipeline lit la config en D1 pour savoir s'il est l'heure d'envoi (fuseau Europe/Paris, rattrapage jusqu'à 48 h) et si le numéro n'est pas déjà parti | Heure/jour modifiables sans toucher au cron ; gère heure d'été/hiver. L'heure réelle d'envoi peut décaler de 10 à 30 min (retards habituels de GitHub) |
+| I8 | Pipeline = un script Node (`scripts/pipeline.ts`) qui accède à D1 via l'API REST Cloudflare (adaptateur `src/db/rest-d1.ts`, même code et mêmes requêtes que le Worker). Idempotent, reprend après un échec partiel, s'arrête après 3 échecs automatiques | Fiabilité sans Workflows (payant en pratique) |
 | I9 | Admin protégé par **Cloudflare Access** (connexion par code à usage unique envoyé par e-mail, liste d'autorisés) ; à vérifier sur l'URL `workers.dev` | Aucun code d'authentification maison |
 | I10 | Pages de détails publiques, non indexées (`noindex`) | Liens persistants depuis les e-mails |
-| I11 | Déploiement **manuel** (`wrangler deploy`) depuis le PC au début ; GitHub Actions éventuellement plus tard | Simplicité |
+| I11 | Déploiement du Worker **manuel** (`wrangler deploy`) depuis le PC. Les secrets du pipeline sont des secrets GitHub ; ceux du Worker des secrets Cloudflare (`UNSUBSCRIBE_SECRET` identique des deux côtés) | Simplicité |
 
 ## Pipeline hebdomadaire
 
@@ -30,7 +30,7 @@ Déclenché le vendredi à 18:00 (Europe/Paris) par défaut ; l'envoi part quelq
 
 1. **Collecte** (déterministe, sans LLM, sur les 7 derniers jours) à partir des sources ci-dessous.
 2. **Tri** : modèle économique (Haiku) reçoit 50 à 80 candidats et renvoie en JSON score, catégorie et doublons. Règle de focus : au moins 2 éléments sur 5 concernent Claude Code, s'il y en a.
-3. **Rédaction** : modèle de qualité (Sonnet) ; le Worker récupère le contenu complet de chaque source retenue, le modèle produit titre accrocheur, résumé de 2 phrases et page de détails dans la langue configurée.
+3. **Rédaction** : modèle de qualité (Sonnet) ; le script récupère le contenu complet de chaque source retenue, le modèle produit titre accrocheur, résumé de 2 phrases et page de détails dans la langue configurée.
 4. **Enregistrement** du numéro (`AAAA-Sxx`) et de ses éléments en D1.
 5. **Envoi** : un mail par destinataire via Resend, avec lien de désinscription signé. Chaque titre pointe vers `/issue/<semaine>/<item>`.
 
@@ -58,15 +58,21 @@ Liste en configuration, extensible sans toucher à la logique. Risque : Reddit p
 
 ## Données (D1)
 
-`settings`, `subscribers`, `issues`, `items`, `seen_urls`, `runs` (journaux d'exécution).
+`settings`, `subscribers`, `issues` (statuts `draft` → `sending` → `sent`), `items`, `seen_urls`, `deliveries` (un enregistrement par numéro et destinataire, pour ne jamais envoyer deux fois), `runs` (journaux d'exécution et coût LLM).
 
 ## Points techniques à valider à l'implémentation
 
 - **Domaine** : sans domaine vérifié (SPF/DKIM), Resend n'envoie qu'à l'adresse du propriétaire du compte. Pour ajouter des destinataires : acheter un domaine (~10 €/an, possible chez Cloudflare) et le vérifier chez Resend.
 - **Cloudflare Access** sur l'URL `workers.dev` : à vérifier ; repli sur un mécanisme simple (lien magique ou secret).
-- **Workflows** sur le plan gratuit : à vérifier.
+- **Actions** : sur un dépôt privé, 2 000 min/mois gratuites ; le déclenchement horaire en consomme environ 700. Sur un dépôt public, les workflows planifiés sont désactivés après 60 jours sans activité du dépôt.
+- **CPU du Worker web** : 10 ms par requête en gratuit. Les pages sont légères (rendu JSX + une lecture D1) ; si Cloudflare renvoie l'erreur 1102, mettre les pages en cache (Cache API).
 - **Clé API** : l'abonnement Claude Pro ne donne pas accès à l'API ; clé facturée à l'usage à créer sur console.anthropic.com, stockée dans les secrets Cloudflare.
 
-## Alternative écartée
+## Changement d'architecture (phase 5)
 
-GitHub Actions (cron) + GitHub Pages : gratuit, mais pas de backend pour le dashboard et la gestion des destinataires.
+Cloudflare Workers (plan gratuit) : 10 ms de CPU par exécution et 50 requêtes sortantes. La collecte seule consomme environ 1,1 s de CPU (mesure locale) : impossible en gratuit. Options étudiées : Workers Paid à 5 $/mois (simple, horaire exact) ou pipeline sur GitHub Actions. **Choix : GitHub Actions**, pour rester à coût nul tant que l'utilité du service n'est pas confirmée. Migration vers Workers Paid possible plus tard : la logique est dans `runIfDue()`, il suffirait de rebrancher un handler `scheduled`.
+
+Répartition :
+- **Cloudflare Worker** : pages publiques, désinscription, futur dashboard admin. Aucune clé de génération ni d'envoi.
+- **GitHub Actions** : collecte, génération, envoi. Accède à D1 par l'API REST (jeton Cloudflare limité à D1).
+- **« Envoyer maintenant »** (phase 6) : déclenchement manuel du workflow (`workflow_dispatch`) ou drapeau en base lu par le prochain passage horaire.
