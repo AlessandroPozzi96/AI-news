@@ -10,6 +10,8 @@ export type GenerateOptions = {
   language: Language
   /** Minimum number of Claude Code items, when enough exist. */
   minClaudeCode: number
+  /** Maximum number of Claude Code items, to keep the issue varied. Defaults to `count`. */
+  maxClaudeCode?: number
 }
 
 export type GeneratedIssue = {
@@ -29,10 +31,17 @@ export async function generateIssue(
 
   const triaged = await triage(deps.llm, candidates, { shortlistSize: options.count * 2 })
   usage.push(triaged.usage)
-  const { selected, reserve } = selectPicks(triaged.picks, options.count, options.minClaudeCode)
+  const { selected, reserve } = selectPicks(
+    triaged.picks,
+    options.count,
+    options.minClaudeCode,
+    options.maxClaudeCode,
+  )
 
   const written: { item: Omit<IssueItem, 'position'>; score: number }[] = []
+  const attempted = new Set<(typeof selected)[number]>()
   const attempt = async (pick: (typeof selected)[number]) => {
+    attempted.add(pick)
     try {
       const out = await writeItem(deps.llm, deps.fetch, pick, options.language)
       usage.push(out.usage)
@@ -45,10 +54,17 @@ export async function generateIssue(
   }
 
   await Promise.all(selected.map(attempt))
-  // A failed item is replaced by the next best reserve pick so the issue stays full.
-  for (const pick of reserve) {
-    if (written.length >= options.count) break
-    await attempt(pick)
+  // A failed item is replaced by the next best reserve pick so the issue stays full. Reserve picks
+  // respect the Claude Code cap first; they only break it if nothing else can fill the issue.
+  const maxClaudeCode = options.maxClaudeCode ?? options.count
+  const claudeCodeWritten = () => written.filter((w) => w.item.claudeCode).length
+  for (const pass of ['respect-cap', 'fill'] as const) {
+    for (const pick of reserve) {
+      if (written.length >= options.count) break
+      if (attempted.has(pick)) continue
+      if (pass === 'respect-cap' && pick.claudeCode && claudeCodeWritten() >= maxClaudeCode) continue
+      await attempt(pick)
+    }
   }
 
   const items = written

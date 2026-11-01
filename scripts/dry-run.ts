@@ -29,7 +29,7 @@ console.log(`Generating ${count} items in ${language}…`)
 const issue = await generateIssue(
   { llm: anthropicLlm(apiKey), fetch },
   collected.candidates,
-  { count, language, minClaudeCode: Math.ceil(count * 0.4) },
+  { count, language, minClaudeCode: Math.ceil(count * 0.4), maxClaudeCode: Math.ceil(count * 0.8) },
 )
 
 const stamp = new Date().toISOString().slice(0, 10)

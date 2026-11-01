@@ -29,8 +29,10 @@ function fakeLlm(handlers: { triage: Handler; writer: Handler }): Llm & { calls:
   }
 }
 
+const PADDING = ' Lorem ipsum dolor sit amet, consectetur adipiscing elit.'.repeat(10)
+
 const page = (text: string) => ({
-  fetch: (async () => new Response(`<html><main>${text}</main></html>`)) as typeof fetch,
+  fetch: (async () => new Response(`<html><main>${text}${PADDING}</main></html>`)) as typeof fetch,
 })
 
 describe('triage', () => {
@@ -48,6 +50,23 @@ describe('triage', () => {
     })
     const { picks } = await triage(llm, [cand(0), cand(1), cand(2)], { shortlistSize: 4 })
     expect(picks.map((p) => p.candidate.title)).toEqual(['Candidate 2', 'Candidate 1'])
+  })
+
+  it('keeps a single release per github repository', async () => {
+    const llm = fakeLlm({
+      triage: () => ({
+        picks: [
+          { id: 0, category: 'other', score: 5, claude_code_related: true },
+          { id: 1, category: 'other', score: 8, claude_code_related: true },
+          { id: 2, category: 'other', score: 3, claude_code_related: false },
+        ],
+      }),
+      writer: () => ({}),
+    })
+    const { picks } = await triage(llm, [cand(0, 'github:a/b'), cand(1, 'github:a/b'), cand(2, 'hackernews')], {
+      shortlistSize: 4,
+    })
+    expect(picks.map((p) => p.candidate.title)).toEqual(['Candidate 1', 'Candidate 2'])
   })
 
   it('wraps candidates in a data block and flags them as untrusted', async () => {
@@ -72,6 +91,13 @@ describe('selectPicks', () => {
     expect(selected.filter((p) => p.claudeCode)).toHaveLength(2)
     expect(selected).toHaveLength(3)
     expect(reserve.map((p) => p.candidate.title)).toEqual(['Candidate 2', 'Candidate 3'])
+  })
+
+  it('caps Claude Code items so the issue stays varied', () => {
+    const picks = [pick(1, 9, true), pick(2, 8, true), pick(3, 7, true), pick(4, 3, false), pick(5, 2, false)]
+    const { selected } = selectPicks(picks, 3, 1, 2)
+    expect(selected.filter((p) => p.claudeCode)).toHaveLength(2)
+    expect(selected.map((p) => p.candidate.title).sort()).toEqual(['Candidate 1', 'Candidate 2', 'Candidate 4'])
   })
 
   it('does not fail when fewer Claude Code items exist than the quota', () => {
@@ -110,6 +136,18 @@ describe('generateIssue', () => {
     expect(llm.calls.find((c) => c.tier === 'writer')?.system).toContain('French')
   })
 
+  it('rejects a source too thin to summarize', async () => {
+    const llm = fakeLlm({
+      triage: () => ({ picks: [{ id: 0, category: 'other', score: 5, claude_code_related: false }] }),
+      writer: writerOk,
+    })
+    const thin = (async () => new Response('tiny')) as typeof fetch
+    const issue = await generateIssue({ llm, fetch: thin }, [cand(0)], { count: 1, language: 'fr', minClaudeCode: 0 })
+    expect(issue.items).toHaveLength(0)
+    expect(issue.skipped[0].reason).toContain('too thin')
+    expect(llm.calls.some((c) => c.tier === 'writer')).toBe(false)
+  })
+
   it('replaces a failing item with the next reserve pick', async () => {
     const llm = fakeLlm({
       triage: () => ({
@@ -131,6 +169,33 @@ describe('generateIssue', () => {
     })
     expect(issue.items.map((i) => i.sourceUrl).sort()).toEqual(['https://example.com/1', 'https://example.com/2'])
     expect(issue.skipped).toEqual([{ title: 'Candidate 0', reason: 'refused' }])
+  })
+
+  it('keeps the Claude Code cap when a reserve pick replaces a failed item', async () => {
+    const llm = fakeLlm({
+      triage: () => ({
+        picks: [
+          { id: 0, category: 'other', score: 10, claude_code_related: true },
+          { id: 1, category: 'other', score: 9, claude_code_related: true },
+          { id: 2, category: 'other', score: 8, claude_code_related: false },
+          { id: 3, category: 'other', score: 7, claude_code_related: true },
+          { id: 4, category: 'other', score: 6, claude_code_related: false },
+        ],
+      }),
+      writer: (req) => {
+        if (req.user.includes('Candidate 2')) throw new Error('fails')
+        return writerOk(req)
+      },
+    })
+    const issue = await generateIssue({ llm, fetch: page('x').fetch }, [0, 1, 2, 3, 4].map((n) => cand(n)), {
+      count: 3,
+      language: 'fr',
+      minClaudeCode: 1,
+      maxClaudeCode: 2,
+    })
+    expect(issue.items).toHaveLength(3)
+    expect(issue.items.filter((i) => i.claudeCode)).toHaveLength(2)
+    expect(issue.items.map((i) => i.sourceUrl)).toContain('https://example.com/4')
   })
 
   it('orders items by score and reports a cost', async () => {

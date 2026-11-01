@@ -37,8 +37,18 @@ Prefer:
 Avoid:
 - spam, self-promotion, low-effort or obviously inflated repositories
 - several items about the same event: keep only the best source
+- several versions of the same product or repository: keep only the most notable one (or the latest)
 - routine patch releases with no notable change
 - general AI news that does not matter to software development
+
+Categories:
+- model: a new model or a significant model update
+- skill_tool: a new or trending skill, plugin, MCP server, library or tool
+- best_practice: guidance, techniques, security advisories or lessons about working with coding agents
+- command_shortcut: the main point is new commands, shortcuts, flags or settings
+- other: anything else, including ordinary release notes and news
+
+Score low (1 to 3): a single user's unverified complaint or anecdote, vague discussion posts, and items whose snippet is too thin to tell what happened.
 
 Rules:
 - "claude_code_related" is true when the item concerns Claude Code, Claude's agent SDKs, or Anthropic tooling for developers.
@@ -89,15 +99,38 @@ export async function triage(
       claudeCode: p.claude_code_related,
     })
   }
-  return { picks: picks.sort((a, b) => b.score - a.score), usage }
+  return { picks: onePerReleaseStream(picks.sort((a, b) => b.score - a.score)), usage }
 }
 
-/** Takes the top `count` picks, guaranteeing `minClaudeCode` Claude Code items when available. */
-export function selectPicks(picks: Pick[], count: number, minClaudeCode: number): { selected: Pick[]; reserve: Pick[] } {
+/** Several releases of the same repository are one story: keep the best-scored one (input is sorted). */
+export function onePerReleaseStream(picks: Pick[]): Pick[] {
+  const seen = new Set<string>()
+  return picks.filter((p) => {
+    if (!p.candidate.source.startsWith('github:')) return true
+    if (seen.has(p.candidate.source)) return false
+    seen.add(p.candidate.source)
+    return true
+  })
+}
+
+/**
+ * Takes the top `count` picks, guaranteeing at least `minClaudeCode` and at most `maxClaudeCode`
+ * Claude Code items (the cap keeps the issue from becoming a Claude Code-only digest).
+ */
+export function selectPicks(
+  picks: Pick[],
+  count: number,
+  minClaudeCode: number,
+  maxClaudeCode: number = count,
+): { selected: Pick[]; reserve: Pick[] } {
   const selected: Pick[] = picks.filter((p) => p.claudeCode).slice(0, Math.min(minClaudeCode, count))
+  let claudeCodeCount = selected.length
   for (const p of picks) {
     if (selected.length >= count) break
-    if (!selected.includes(p)) selected.push(p)
+    if (selected.includes(p)) continue
+    if (p.claudeCode && claudeCodeCount >= maxClaudeCode) continue
+    if (p.claudeCode) claudeCodeCount++
+    selected.push(p)
   }
   selected.sort((a, b) => b.score - a.score)
   return { selected, reserve: picks.filter((p) => !selected.includes(p)) }
