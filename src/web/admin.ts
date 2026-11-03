@@ -21,7 +21,8 @@ const HEADERS = {
   'X-Robots-Tag': 'noindex, nofollow',
   'Content-Security-Policy':
     "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
-  'Referrer-Policy': 'no-referrer',
+  // 'no-referrer' would make browsers drop the Origin header on same-origin POSTs, which the CSRF check relies on.
+  'Referrer-Policy': 'same-origin',
   'X-Content-Type-Options': 'nosniff',
   'Cache-Control': 'no-store',
 }
@@ -53,6 +54,12 @@ function sameHost(origin: string | undefined, url: string): boolean {
   }
 }
 
+/** Origin must match; when a browser sends none (or "null"), its Sec-Fetch-Site must say same-origin. */
+function isSameOriginPost(origin: string | undefined, fetchSite: string | undefined, url: string): boolean {
+  if (origin && origin !== 'null') return sameHost(origin, url)
+  return fetchSite === 'same-origin'
+}
+
 adminRoutes.use('/admin/*', async (c, next) => {
   const token = c.env.ADMIN_TOKEN
   // Without a sufficiently long token the dashboard simply does not exist.
@@ -60,7 +67,9 @@ adminRoutes.use('/admin/*', async (c, next) => {
 
   // Cookies are SameSite=Strict; this additionally rejects cross-origin form posts.
   if (c.req.method === 'POST') {
-    if (sameHost(c.req.header('Origin'), c.req.url) === false) return new Response('Forbidden', { status: 403 })
+    if (!isSameOriginPost(c.req.header('Origin'), c.req.header('Sec-Fetch-Site'), c.req.url)) {
+      return new Response('Forbidden', { status: 403 })
+    }
   }
 
   const loggingIn = c.req.path === '/admin/login'
