@@ -82,6 +82,31 @@ describe('admin routes', () => {
     expect((await post('/admin/login', { token: env.ADMIN_TOKEN }, undefined, 'null')).status).toBe(403)
   })
 
+  it('accepts a same-origin post whose browser omitted the Origin header, and rejects other fetch sites', async () => {
+    // Browsers drop Origin on same-origin POSTs under some referrer policies; Sec-Fetch-Site is the fallback signal.
+    const withSite = (site: string, origin?: string) =>
+      SELF.fetch(`${ORIGIN}/admin/login`, {
+        method: 'POST',
+        redirect: 'manual',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Sec-Fetch-Site': site,
+          ...(origin ? { Origin: origin } : {}),
+        },
+        body: new URLSearchParams({ token: env.ADMIN_TOKEN }),
+      })
+    expect((await withSite('same-origin')).status).toBe(303)
+    expect((await withSite('same-origin', 'null')).status).toBe(303)
+    expect((await withSite('cross-site')).status).toBe(403)
+    expect((await withSite('same-site')).status).toBe(403)
+    expect((await withSite('same-origin', 'https://evil.test')).status).toBe(403)
+  })
+
+  it('keeps the Origin header on same-origin posts by using a same-origin referrer policy', async () => {
+    const res = await SELF.fetch(`${ORIGIN}/admin/login`)
+    expect(res.headers.get('Referrer-Policy')).toBe('same-origin')
+  })
+
   it('saves settings and manages subscribers once logged in', async () => {
     const cookie = await login()
 
