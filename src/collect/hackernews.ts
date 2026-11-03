@@ -33,6 +33,7 @@ export function hackerNews(queries: string[], minPoints: number): Collector {
             url: h.url ?? `https://news.ycombinator.com/item?id=${h.objectID}`,
             excerpt: truncate(stripHtml(h.story_text ?? ''), 300),
             source: 'hackernews',
+            discussionUrl: `https://news.ycombinator.com/item?id=${h.objectID}`,
             publishedAt: h.created_at,
             metrics: { points: h.points ?? 0, comments: h.num_comments ?? 0 },
           }))

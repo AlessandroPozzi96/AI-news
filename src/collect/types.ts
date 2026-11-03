@@ -4,6 +4,8 @@ export type Candidate = {
   excerpt: string
   source: string
   publishedAt: string
+  /** Comment thread (e.g. Hacker News) used to enrich a source that is too thin on its own. */
+  discussionUrl?: string
   metrics?: { points?: number; comments?: number; stars?: number }
 }
 
