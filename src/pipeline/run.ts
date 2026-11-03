@@ -2,7 +2,7 @@ import { collectAll } from '../collect/collect'
 import { loadSeenUrls, markUrlsSeen } from '../collect/seen'
 import { COLLECTORS } from '../collect/sources'
 import type { Collector } from '../collect/types'
-import { generateIssue } from '../generate/issue'
+import { generateIssue, MIN_RELEVANCE_SCORE } from '../generate/issue'
 import { getIssue, saveIssue, setIssueStatus, type StoredIssue } from '../issues/store'
 import type { Llm } from '../llm/types'
 import { BATCH_SIZE } from '../mail/resend'
@@ -33,6 +33,7 @@ export type PipelineResult =
   | { status: 'sent'; issueId: string; delivered: number; costUsd: number }
 
 const RUN_LOCK_MINUTES = 30
+const MIN_ITEMS = 3
 
 /** Cron entry point: runs the pipeline only when the configured send window is open. */
 export async function runIfDue(deps: PipelineDeps): Promise<PipelineResult> {
@@ -103,11 +104,16 @@ export async function runPipeline(deps: PipelineDeps): Promise<PipelineResult> {
         language: settings.language,
         minClaudeCode: Math.ceil(settings.itemsPerIssue * 0.4),
         maxClaudeCode: Math.ceil(settings.itemsPerIssue * 0.8),
+        minScore: MIN_RELEVANCE_SCORE,
       })
       costUsd = generated.costUsd
       if (generated.items.length === 0) throw new Error('No item could be generated, nothing to send')
+      const required = Math.min(MIN_ITEMS, settings.itemsPerIssue)
+      if (generated.items.length < required) {
+        throw new Error(`Only ${generated.items.length} relevant item(s) generated, at least ${required} required: nothing to send`)
+      }
       await saveIssue(deps.db, issueId, settings.language, generated.items)
-      await markUrlsSeen(deps.db, generated.items.map((i) => i.sourceUrl), true)
+      await markUrlsSeen(deps.db, generated.consumedUrls, true)
       issue = await getIssue(deps.db, issueId)
       if (!issue) throw new Error('Issue was not saved')
     }

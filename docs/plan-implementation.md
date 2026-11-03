@@ -41,6 +41,8 @@ Principe : traiter d'abord le risque principal (la qualité du contenu généré
 
 **Fait quand** : tu relis un numéro généré et le juges digne d'être envoyé (titres, pertinence, exactitude des liens et commandes).
 
+**État** : garde-fous de pertinence ajoutés après le premier dry-run réel (voir `adr/ADR-0001-relevance-guardrails.md`) ; le dry-run du 2026-11-03 donne un numéro cohérent. Reste ta relecture.
+
 ## Phase 4 — Pages publiques et template d'e-mail
 
 - Route `/issue/<semaine>/<item>` rendue depuis D1, `noindex`, mise en cache.

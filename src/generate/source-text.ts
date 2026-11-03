@@ -34,3 +34,28 @@ async function load(doFetch: typeof fetch, url: string): Promise<string> {
   }
   return stripHtml(mainHtml(await getText(doFetch, url, { Accept: 'text/html,text/plain' })))
 }
+
+type HnNode = { text?: string | null; children?: HnNode[] }
+
+const MAX_COMMENTS = 15
+const MAX_DEPTH = 6
+
+function flatten(node: HnNode, out: string[], depth = 0): void {
+  if (out.length >= MAX_COMMENTS || depth > MAX_DEPTH) return
+  if (node.text) out.push(stripHtml(node.text))
+  for (const child of node.children ?? []) flatten(child, out, depth + 1)
+}
+
+/** Text of a Hacker News thread (story text, then comments), empty when unavailable. */
+export async function fetchDiscussion(doFetch: typeof fetch, discussionUrl: string): Promise<string> {
+  const id = discussionUrl.match(/[?&]id=(\d+)/)?.[1]
+  if (!id) return ''
+  try {
+    const root = await getJson<HnNode>(doFetch, `https://hn.algolia.com/api/v1/items/${id}`)
+    const parts: string[] = []
+    flatten(root, parts)
+    return parts.join('\n\n').slice(0, MAX_CHARS)
+  } catch {
+    return ''
+  }
+}

@@ -180,6 +180,34 @@ describe('pipeline', () => {
     expect(d.llm.calls.length).toBe(llmCalls)
   })
 
+  it('refuses to send an issue with fewer than 3 relevant items and stores nothing', async () => {
+    const two = () => ({
+      picks: [
+        { id: 0, category: 'other', score: 9, claude_code_related: true },
+        { id: 1, category: 'other', score: 8, claude_code_related: false },
+      ],
+    })
+    const d = deps({ llm: fakeLlm({ triage: two, writer: writerOk }) })
+    await expect(runPipeline(d)).rejects.toThrow('Only 2 relevant item(s)')
+    expect(d.mailer.sent.filter((m) => m.to === 'a@x.test')).toHaveLength(0)
+  })
+
+  it('accepts a shorter issue when the configured size is below the minimum', async () => {
+    await env.DB.prepare("UPDATE settings SET value = '2' WHERE key = 'items_per_issue'").run()
+    try {
+      const two = () => ({
+        picks: [
+          { id: 0, category: 'other', score: 9, claude_code_related: true },
+          { id: 1, category: 'other', score: 8, claude_code_related: false },
+        ],
+      })
+      const d = deps({ llm: fakeLlm({ triage: two, writer: writerOk }) })
+      expect(await runPipeline(d)).toMatchObject({ status: 'sent' })
+    } finally {
+      await env.DB.prepare("UPDATE settings SET value = '5' WHERE key = 'items_per_issue'").run()
+    }
+  })
+
   it('alerts the admin on failure and records the run', async () => {
     const d = deps({ llm: fakeLlm({ triage: () => ({ picks: [] }), writer: writerOk }) })
     await expect(runPipeline(d)).rejects.toThrow('No item could be generated')

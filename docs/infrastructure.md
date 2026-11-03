@@ -53,7 +53,9 @@ Liste en configuration, extensible sans toucher à la logique. Risque : Reddit p
 
 - Contenu web passé comme donnée délimitée, sans outils pour le modèle d'écriture, avec consigne anti-injection.
 - HTML produit assaini avant affichage.
-- URLs déjà publiées stockées (`seen_urls`) : jamais de republication.
+- URLs déjà publiées stockées (`seen_urls`) : jamais de republication. Toutes les sources d'un même sujet (retenue et alternatives) sont marquées vues.
+- Pertinence (voir `adr/ADR-0001-relevance-guardrails.md`) : le tri attribue un `story` (identifiant kebab-case du sujet) ; un seul élément par `story`, les autres sources servent de repli si la source retenue est trop courte (< 400 caractères). Score minimal 5/10 : mieux vaut un numéro plus court que du remplissage ; moins de 3 éléments (ou moins que la taille configurée si elle est inférieure) = échec et alerte, rien n'est envoyé.
+- Source trop courte pour un élément Hacker News : le fil de discussion (15 commentaires max) complète la page, signalé au rédacteur comme non vérifié. Les commandes ne sont jamais validées contre les commentaires, seulement contre la page. Les requêtes HTTP (`GET /v1/...`) ne sont pas des commandes.
 - Coût estimé : environ 1 $/mois (à confirmer sur les tarifs actuels).
 
 ## Données (D1)
