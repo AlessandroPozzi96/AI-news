@@ -330,7 +330,7 @@ describe('manual send (runNow)', () => {
   })
 
   it('sends an issue with a single item', async () => {
-    const d = deps({ now: WEDNESDAY_S45, llm: fakeLlm({ triage: triageOf(1), writer: writerOk }) })
+    const d = deps({ now: WEDNESDAY_S45, llm: fakeLlm({ triage: triageBySection({ news: 1 }), writer: writerOk }) })
     expect(await runNow(d)).toMatchObject({ status: 'sent', issueId: '2026-S45-2', delivered: 2 })
   })
 
