@@ -60,6 +60,8 @@ Principe : traiter d'abord le risque principal (la qualité du contenu généré
 
 **Fait quand** : un envoi de test réel arrive dans ta boîte, un second déclenchement du même numéro n'envoie rien, une panne simulée génère l'alerte.
 
+**État** : réalisée (pipeline sur GitHub Actions, cron horaire, idempotence par destinataire, alerte admin). Voir `infrastructure.md`.
+
 ## Phase 6 — Dashboard admin
 
 - Réglages : jour/heure, fréquence, nombre d'éléments (5/10), langue.
@@ -67,7 +69,7 @@ Principe : traiter d'abord le risque principal (la qualité du contenu généré
 - Actions : prévisualiser le prochain numéro, « envoyer maintenant », relancer un échec, historique.
 - Protection : jeton `ADMIN_TOKEN` (secret Worker, ≥ 16 caractères) + cookie de session signé (HttpOnly, SameSite=Strict, 7 jours) + contrôle d'`Origin` sur les POST. Sans jeton, `/admin` répond 404. Choisi plutôt que Cloudflare Access (configuration manuelle dans le dashboard, non vérifiable sur `workers.dev`).
 
-**État** : réglages, destinataires (ajout/désactivation/réactivation, pas de suppression : l'historique d'envoi y est lié), historique des numéros et exécutions codés et testés. Reste : « envoyer maintenant » et prévisualisation (à brancher sur `workflow_dispatch`, qui exige un jeton GitHub), puis déploiement avec le secret `ADMIN_TOKEN`.
+**État** : réglages, destinataires (ajout/désactivation/réactivation, pas de suppression : l'historique d'envoi y est lié), historique des numéros et exécutions, « Envoyer maintenant » (ADR-0002) codés et testés. Reste : prévisualisation du prochain numéro, puis déploiement avec les secrets `ADMIN_TOKEN` et `GH_DISPATCH_TOKEN`. La relance d'un échec est couverte par « Envoyer maintenant » (reprise sans régénérer ni renvoyer aux destinataires déjà servis).
 
 **Fait quand** : tout se règle depuis le navigateur et `/admin` est inaccessible sans connexion.
 

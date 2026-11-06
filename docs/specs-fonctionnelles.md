@@ -36,8 +36,10 @@ Chaque élément porte une catégorie parmi : `modèle`, `skill/outil`, `bonne p
 - **Fréquence d'envoi** : jour(s) et rythme configurables (hebdomadaire par défaut).
 - **Nombre d'éléments** par e-mail : 5 ou 10.
 - **Langue** de la newsletter : français par défaut, option pour en changer (anglais au minimum).
-- **Actions** : « envoyer maintenant », prévisualiser le prochain numéro.
-- Historique des numéros envoyés.
+- **Actions** :
+  - « Envoyer maintenant » : génère un **nouveau** numéro et l'envoie tout de suite à tous les destinataires actifs. Pas de limite de nombre, pas de confirmation. Le numéro porte un suffixe (`2026-S45-2`, puis `-3`…) et n'interfère pas avec l'envoi automatique de la semaine.
+  - Prévisualiser le prochain numéro (à faire).
+- Historique des numéros envoyés et des exécutions.
 
 ## F4 — Génération
 

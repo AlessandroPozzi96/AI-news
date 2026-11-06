@@ -1,6 +1,6 @@
 # Infrastructure et architecture
 
-Statut : phases 1 à 4 réalisées ; phase 5 en cours. Révision du 2026-11-01 : le pipeline tourne sur GitHub Actions (voir « Changement d'architecture »).
+Statut : phases 1 à 5 réalisées ; phase 6 en cours. Révision du 2026-11-07 : le pipeline tourne sur GitHub Actions (voir « Changement d'architecture »), « Envoyer maintenant » déclenche le workflow (ADR-0002).
 
 ## Contraintes
 
@@ -20,9 +20,20 @@ Statut : phases 1 à 4 réalisées ; phase 5 en cours. Révision du 2026-11-01 :
 | I6 | E-mail : template HTML écrit à la main, styles en ligne | Compatibilité Gmail/Outlook |
 | I7 | Déclenchement : workflow GitHub Actions planifié **toutes les heures** ; le pipeline lit la config en D1 pour savoir s'il est l'heure d'envoi (fuseau Europe/Paris, rattrapage jusqu'à 48 h) et si le numéro n'est pas déjà parti | Heure/jour modifiables sans toucher au cron ; gère heure d'été/hiver. L'heure réelle d'envoi peut décaler de 10 à 30 min (retards habituels de GitHub) |
 | I8 | Pipeline = un script Node (`scripts/pipeline.ts`) qui accède à D1 via l'API REST Cloudflare (adaptateur `src/db/rest-d1.ts`, même code et mêmes requêtes que le Worker). Idempotent, reprend après un échec partiel, s'arrête après 3 échecs automatiques | Fiabilité sans Workflows (payant en pratique) |
-| I9 | Admin protégé par **Cloudflare Access** (connexion par code à usage unique envoyé par e-mail, liste d'autorisés) ; à vérifier sur l'URL `workers.dev` | Aucun code d'authentification maison |
+| I9 | Admin protégé par un **jeton** (`ADMIN_TOKEN`, secret Worker) échangé contre un **cookie de session signé** (HttpOnly, SameSite=Strict, 7 jours) ; contrôle d'`Origin` sur les POST. Sans jeton, `/admin` répond 404 | Pas de service externe à configurer, vérifiable sur `workers.dev` (Cloudflare Access écarté) |
 | I10 | Pages de détails publiques, non indexées (`noindex`) | Liens persistants depuis les e-mails |
 | I11 | Déploiement du Worker **manuel** (`wrangler deploy`) depuis le PC. Les secrets du pipeline sont des secrets GitHub ; ceux du Worker des secrets Cloudflare (`UNSUBSCRIBE_SECRET` identique des deux côtés) | Simplicité |
+| I12 | « Envoyer maintenant » : le Worker appelle `workflow_dispatch` (`force`) ; il ne génère rien. Jeton GitHub séparé, à moindre privilège (voir « Secrets » ci-dessous) | Le Worker n'a ni clé Anthropic ni clé Resend, et 10 ms de CPU |
+
+## Secrets
+
+| Où | Nom | Rôle |
+|---|---|---|
+| Worker (`npx wrangler secret put …`) | `ADMIN_TOKEN` | Connexion au dashboard (≥ 16 caractères) |
+| Worker | `GH_DISPATCH_TOKEN` | Jeton GitHub fine-grained, limité à ce dépôt, permission **Actions : lecture et écriture**. Sert uniquement à lancer le workflow |
+| Worker | `UNSUBSCRIBE_SECRET` | Signature des liens de désinscription |
+| `wrangler.jsonc` (variable, non secrète) | `GITHUB_REPO` | Dépôt dans lequel le workflow est lancé |
+| GitHub Actions | `CF_*`, `D1_DATABASE_ID`, `ANTHROPIC_API_KEY`, `RESEND_API_KEY`, `UNSUBSCRIBE_SECRET`, `ADMIN_EMAIL` | Pipeline |
 
 ## Pipeline hebdomadaire
 
@@ -65,7 +76,6 @@ Liste en configuration, extensible sans toucher à la logique. Risque : Reddit p
 ## Points techniques à valider à l'implémentation
 
 - **Domaine** : sans domaine vérifié (SPF/DKIM), Resend n'envoie qu'à l'adresse du propriétaire du compte. Pour ajouter des destinataires : acheter un domaine (~10 €/an, possible chez Cloudflare) et le vérifier chez Resend.
-- **Cloudflare Access** sur l'URL `workers.dev` : à vérifier ; repli sur un mécanisme simple (lien magique ou secret).
 - **Actions** : sur un dépôt privé, 2 000 min/mois gratuites ; le déclenchement horaire en consomme environ 700. Sur un dépôt public, les workflows planifiés sont désactivés après 60 jours sans activité du dépôt.
 - **CPU du Worker web** : 10 ms par requête en gratuit. Les pages sont légères (rendu JSX + une lecture D1) ; si Cloudflare renvoie l'erreur 1102, mettre les pages en cache (Cache API).
 - **Clé API** : l'abonnement Claude Pro ne donne pas accès à l'API ; clé facturée à l'usage à créer sur console.anthropic.com, stockée dans les secrets Cloudflare.
@@ -77,4 +87,4 @@ Cloudflare Workers (plan gratuit) : 10 ms de CPU par exécution et 50 requêtes 
 Répartition :
 - **Cloudflare Worker** : pages publiques, désinscription, futur dashboard admin. Aucune clé de génération ni d'envoi.
 - **GitHub Actions** : collecte, génération, envoi. Accède à D1 par l'API REST (jeton Cloudflare limité à D1).
-- **« Envoyer maintenant »** (phase 6) : déclenchement manuel du workflow (`workflow_dispatch`) ou drapeau en base lu par le prochain passage horaire.
+- **« Envoyer maintenant »** (phase 6, réalisé) : le bouton `/admin` appelle `workflow_dispatch` sur `newsletter.yml` (`force: true`, branche `master`). Le workflow lance `scripts/pipeline.ts --force`, qui génère et envoie un numéro manuel (`AAAA-Sxx-2`, `-3`…) à tous les abonnés actifs. Délai : le temps de file d'attente de GitHub Actions (quelques minutes). Détails : `adr/ADR-0002-send-now.md`.
