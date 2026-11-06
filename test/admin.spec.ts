@@ -144,6 +144,31 @@ describe('admin routes', () => {
     expect(body).toContain('Réglages enregistrés.')
   })
 
+  it('shows the send-now button on the dashboard', async () => {
+    const cookie = await login()
+    const body = await (await SELF.fetch(`${ORIGIN}/admin`, { headers: { Cookie: cookie } })).text()
+    expect(body).toContain('Envoyer maintenant')
+    expect(body).toContain('action="/admin/send-now"')
+  })
+
+  it('send-now requires a session', async () => {
+    const res = await post('/admin/send-now', {})
+    expect(res.status).toBe(303)
+    expect(res.headers.get('Location')).toBe('/admin/login')
+  })
+
+  it('send-now rejects cross-origin posts', async () => {
+    const cookie = await login()
+    expect((await post('/admin/send-now', {}, cookie, 'https://evil.test')).status).toBe(403)
+  })
+
+  it('send-now reports when the GitHub token is not configured', async () => {
+    const cookie = await login()
+    const res = await post('/admin/send-now', {}, cookie)
+    expect(res.status).toBe(303)
+    expect(res.headers.get('Location')).toBe('/admin?msg=send_unconfigured')
+  })
+
   it('does not accept a forged session cookie', async () => {
     const res = await SELF.fetch(`${ORIGIN}/admin`, { redirect: 'manual', headers: { Cookie: 'admin_session=9999999999.deadbeef' } })
     expect(res.status).toBe(303)

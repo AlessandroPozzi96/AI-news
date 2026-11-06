@@ -1,7 +1,7 @@
 import { restD1 } from '../src/db/rest-d1'
 import { anthropicLlm } from '../src/llm/anthropic'
 import { resendMailer } from '../src/mail/resend'
-import { runIfDue, runPipeline, type PipelineDeps } from '../src/pipeline/run'
+import { runIfDue, runNow, type PipelineDeps } from '../src/pipeline/run'
 
 const REQUIRED = [
   'CF_ACCOUNT_ID',
@@ -36,8 +36,8 @@ const deps: PipelineDeps = {
 }
 
 try {
-  // `--force` skips the schedule check (manual "send now"), but still never re-sends a sent issue.
-  const result = force ? await runPipeline(deps) : await runIfDue(deps)
+  // `--force` (manual "Envoyer maintenant") sends a new manual issue now, ignoring the schedule.
+  const result = force ? await runNow(deps) : await runIfDue(deps)
   console.log(JSON.stringify(result))
 } catch (e) {
   // A non-zero exit makes the GitHub run fail visibly (and GitHub e-mails the repo owner about it).

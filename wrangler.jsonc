@@ -3,6 +3,9 @@
   "name": "ai-news",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-01",
+  "vars": {
+    "GITHUB_REPO": "AlessandroPozzi96/dev-agents-weekly"
+  },
   "d1_databases": [
     {
       "binding": "DB",

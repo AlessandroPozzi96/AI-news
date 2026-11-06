@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       force:
-        description: 'Send the current week now, ignoring the schedule'
+        description: 'Generate and send a new manual issue now to all active subscribers, ignoring the schedule'
         type: boolean
         default: false
 

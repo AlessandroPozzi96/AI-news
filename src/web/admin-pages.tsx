@@ -45,6 +45,14 @@ export function AdminPage(props: {
         <h1>Tableau de bord</h1>
         <FlashMessage flash={props.flash} />
 
+        <h2>Envoi immédiat</h2>
+        <p>Génère un nouveau numéro et l'envoie tout de suite à tous les destinataires actifs.</p>
+        <form method="post" action="/admin/send-now">
+          <button class="btn" type="submit">
+            Envoyer maintenant
+          </button>
+        </form>
+
         <h2>Envoi</h2>
         <form method="post" action="/admin/settings">
           <label for="send_day">Jour d'envoi</label>

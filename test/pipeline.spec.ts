@@ -2,7 +2,7 @@ import { applyD1Migrations, env, SELF } from 'cloudflare:test'
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { signUnsubscribeToken, verifyUnsubscribeToken } from '../src/mail/token'
 import { resendMailer } from '../src/mail/resend'
-import { runIfDue, runPipeline, type PipelineDeps } from '../src/pipeline/run'
+import { runIfDue, runNow, runPipeline, type PipelineDeps } from '../src/pipeline/run'
 import { isDue, weekIdIn } from '../src/pipeline/schedule'
 import type { Settings } from '../src/pipeline/settings'
 import { candidate, collectorOf, fakeLlm, fakeMailer, longPage, triageOf, writerOk } from './helpers'
@@ -244,6 +244,80 @@ describe('pipeline', () => {
     expect(await runIfDue(d)).toMatchObject({ status: 'skipped', reason: 'not due' })
     expect(d.mailer.sent).toHaveLength(0)
     expect((await runIfDue(deps())).status).toBe('sent')
+  })
+})
+
+describe('manual send (runNow)', () => {
+  const WEDNESDAY_S45 = new Date('2026-11-04T10:00:00Z') // ISO week 45 in Paris
+  const FRIDAY_S45 = new Date('2026-11-06T17:00:00Z') // 18:00 in Paris
+
+  beforeAll(async () => {
+    await applyD1Migrations(env.DB, env.TEST_MIGRATIONS)
+  })
+  beforeEach(reset)
+
+  const issueIds = async () =>
+    (await env.DB.prepare('SELECT id FROM issues ORDER BY id').all<{ id: string }>()).results.map((r) => r.id)
+
+  it('creates -2 when the automatic issue of the week is already sent', async () => {
+    await runPipeline(deps({ now: WEDNESDAY_S45 }))
+    const res = await runNow(deps({ now: WEDNESDAY_S45 }))
+    expect(res).toMatchObject({ status: 'sent', issueId: '2026-S45-2', delivered: 2 })
+    expect(await issueIds()).toEqual(['2026-S45', '2026-S45-2'])
+  })
+
+  it('creates -3 for the next manual send', async () => {
+    await runPipeline(deps({ now: WEDNESDAY_S45 }))
+    await runNow(deps({ now: WEDNESDAY_S45 }))
+    const res = await runNow(deps({ now: WEDNESDAY_S45, collectors: [collectorOf(Array.from({ length: 12 }, (_, i) => candidate(i + 50)))] }))
+    expect(res).toMatchObject({ status: 'sent', issueId: '2026-S45-3' })
+  })
+
+  it('starts at -2 when no automatic issue exists this week', async () => {
+    expect(await runNow(deps({ now: WEDNESDAY_S45 }))).toMatchObject({ status: 'sent', issueId: '2026-S45-2' })
+  })
+
+  it('resumes an unsent manual issue without LLM calls or duplicate mail', async () => {
+    const mailer = fakeMailer({ failFor: ['b@x.test'] })
+    const d = deps({ now: WEDNESDAY_S45, mailer })
+    await expect(runNow(d)).rejects.toThrow('1 delivery(ies) failed')
+    expect(mailer.sent.map((m) => m.to)).toEqual(['a@x.test', 'admin@x.test'])
+    const llmCalls = d.llm.calls.length
+
+    mailer.failFor.clear()
+    expect(await runNow(d)).toMatchObject({ status: 'sent', issueId: '2026-S45-2', delivered: 2 })
+    expect(d.llm.calls.length).toBe(llmCalls)
+    expect(mailer.sent.filter((m) => m.to === 'a@x.test')).toHaveLength(1)
+    expect(mailer.sent.filter((m) => m.to === 'b@x.test')).toHaveLength(1)
+    expect(await issueIds()).toEqual(['2026-S45-2'])
+  })
+
+  it('sends an issue with a single item', async () => {
+    const d = deps({ now: WEDNESDAY_S45, llm: fakeLlm({ triage: triageOf(1), writer: writerOk }) })
+    expect(await runNow(d)).toMatchObject({ status: 'sent', issueId: '2026-S45-2', delivered: 2 })
+  })
+
+  it('fails with the usual alert when no item can be generated', async () => {
+    const d = deps({ now: WEDNESDAY_S45, llm: fakeLlm({ triage: () => ({ picks: [] }), writer: writerOk }) })
+    await expect(runNow(d)).rejects.toThrow('No item could be generated')
+    expect(d.mailer.sent.find((m) => m.to === 'admin@x.test')?.subject).toContain('Pipeline failed for 2026-S45-2')
+    expect(d.mailer.sent.filter((m) => m.to === 'a@x.test')).toHaveLength(0)
+  })
+
+  it('serves the manual issue on public pages', async () => {
+    await runNow(deps({ now: WEDNESDAY_S45 }))
+    expect((await SELF.fetch(`${BASE}/issue/2026-S45-2`)).status).toBe(200)
+    expect((await SELF.fetch(`${BASE}/issue/2026-S45-2/1`)).status).toBe(200)
+    expect((await SELF.fetch(`${BASE}/issue/2026-S45-9`)).status).toBe(404)
+  })
+
+  it('leaves the automatic Friday send in place after a manual send in the same week', async () => {
+    await runNow(deps({ now: WEDNESDAY_S45 }))
+    // The manual send is recent: it must not count towards the one-week frequency gap.
+    await env.DB.prepare("UPDATE issues SET sent_at = '2026-11-04 10:00:00' WHERE id = '2026-S45-2'").run()
+    const friday = deps({ now: FRIDAY_S45, collectors: [collectorOf(Array.from({ length: 12 }, (_, i) => candidate(i + 100)))] })
+    expect(await runIfDue(friday)).toMatchObject({ status: 'sent', issueId: '2026-S45' })
+    expect(await issueIds()).toEqual(['2026-S45', '2026-S45-2'])
   })
 })
 
