@@ -12,6 +12,8 @@ export type Links = {
   issue: string
   item: (position: number) => string
   unsubscribe: string
+  /** Address of the theme script of the pages; defaults to `/theme.js`. */
+  theme?: string
 }
 
 /** Only http(s) links are ever rendered as hrefs; anything else (javascript:, data:) is dropped. */

@@ -28,9 +28,9 @@ ${SECTION_BRIEF[section]}
 
 For the given source, produce:
 - title: catchy and specific, under 80 characters. Intriguing, but it must be true to the source: no clickbait, no exaggeration.
-- summary: two short sentences, under 280 characters, telling the reader what it is and why to care.
-- details.intro: 2 to 4 sentences of context.
-- details.key_points: 3 to 6 short bullet points of concrete facts (what changed, what is new).
+- summary: exactly one sentence, under 140 characters, telling the reader what it is and why to care.
+- details.intro: exactly 2 sentences of context.
+- details.key_points: 3 or 4 short bullet points of concrete facts (what changed, what is new).
 - details.commands: commands the reader is meant to run or paste to install, enable or use the subject (install steps, CLI invocations, config snippets), copied VERBATIM from the source. Empty list if there are none. Never invent or adapt a command. Exclude HTTP requests and API endpoints (e.g. "GET /v1/..."), commands that only illustrate an attack or malware behaviour, bare identifiers (a lone environment variable or setting name), and anything the reader should not run.
 - details.why_it_matters: one or two sentences for a developer working with Claude Code.
 
@@ -43,6 +43,34 @@ Rules:
 
 const MIN_SOURCE_CHARS = 400
 const MAX_ALTERNATIVES = 2
+export const SUMMARY_MAX = 140
+const INTRO_SENTENCES = 2
+const MAX_KEY_POINTS = 4
+
+/**
+ * The first sentence of `text`, and at most `max` characters: when the sentence is longer, it is cut at
+ * a word boundary and ends with an ellipsis. The model is asked for this shape; the code enforces it.
+ */
+export function oneSentence(text: string, max = SUMMARY_MAX): string {
+  const clean = text.replace(/\s+/g, ' ').trim()
+  const end = clean.search(/[.!?](\s|$)/)
+  const sentence = end === -1 ? clean : clean.slice(0, end + 1)
+  if (sentence.length <= max) return sentence
+  const cut = sentence.slice(0, max - 1)
+  const word = cut.lastIndexOf(' ')
+  const kept = word > max / 2 ? cut.slice(0, word) : cut
+  return `${kept.replace(/[\s,;:-]+$/, '')}…`
+}
+
+/** The first `n` sentences of `text`. */
+export function firstSentences(text: string, n: number): string {
+  return text
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(/(?<=[.!?])\s+/)
+    .slice(0, n)
+    .join(' ')
+}
 
 const norm = (s: string) => s.replace(/`/g, '').replace(/\s+/g, ' ').trim()
 
@@ -105,8 +133,13 @@ export async function writeItem(
       category: pick.category,
       claudeCode: section === 'claude_code',
       title: data.title.trim(),
-      summary: data.summary.trim(),
-      details: { ...data.details, commands: keepVerbatimCommands(data.details.commands, source.page) },
+      summary: oneSentence(data.summary),
+      details: {
+        intro: firstSentences(data.details.intro, INTRO_SENTENCES),
+        key_points: data.details.key_points.slice(0, MAX_KEY_POINTS),
+        why_it_matters: data.details.why_it_matters,
+        commands: keepVerbatimCommands(data.details.commands, source.page),
+      },
       sourceUrl: candidate.url,
       sourceName: candidate.source,
     },

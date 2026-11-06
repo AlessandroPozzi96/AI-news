@@ -18,15 +18,16 @@ Chaque élément porte une catégorie parmi : `modèle`, `skill/outil`, `bonne p
 
 - Envoi **100 % automatique**, sans validation préalable.
 - Contient **7 éléments**, en trois sections dans cet ordre : **3 actualités**, **2 indispensables** (outils, serveurs MCP, skills, techniques), **2 Claude Code** (nouveautés, tutoriels, réglages). Chaque section a un titre discret ; un numéro sans section (ancien) n'en a pas.
-- Chaque élément : titre accrocheur + résumé d'une phrase.
+- Mise en page sobre : en-tête avec le nom et la date seulement, titres de section discrets, un titre et une phrase par élément, lien discret « Lire la suite ». Aucun chiffre, aucune étiquette.
 - Un clic sur un élément ouvre sa page de détails.
 - Langue : **français par défaut**, configurable.
 - Lien de désinscription dans chaque e-mail.
 
 ## F2 — Page de détails d'un élément
 
-- Titre, résumé étendu, lien vers la source originale.
-- Si pertinent : commandes d'installation / d'utilisation.
+- Grand titre, courte introduction (2 phrases), 3 à 4 points clés, commandes (blocs clairs), « Pourquoi ça compte », lien vers la source originale.
+- Même mise en page sobre que l'e-mail ; sans étiquettes, cartes ni bordures.
+- Thème : clair par défaut, suit l'appareil ; choix Auto / Clair / Sombre dans le pied de page (sans JavaScript, le sélecteur est caché et le thème reste celui de l'appareil).
 - URL stable et publique, de la forme `/issue/<semaine>/<item>`.
 - Forme finale (artifact ou site web) : site servi par l'infrastructure (voir `infrastructure.md`).
 

@@ -4,6 +4,7 @@ import { generateIssue, sectionPools } from '../src/generate/issue'
 import { fetchDiscussion } from '../src/generate/source-text'
 import { triage } from '../src/generate/triage'
 import { SECTION_COUNTS } from '../src/generate/types'
+import { firstSentences, oneSentence } from '../src/generate/write'
 import { costUsd } from '../src/llm/pricing'
 import type { GenerateRequest, Llm, Usage } from '../src/llm/types'
 import { picksOf, sectionOf, triageBySection, type Handler } from './helpers'
@@ -418,6 +419,43 @@ describe('generateIssue', () => {
     expect(issue.items.map((i) => i.sourceUrl)).toEqual(['https://example.com/1', 'https://example.com/0'])
     expect(issue.items.every((i) => i.section === 'news')).toBe(true)
     expect(issue.costUsd).toBeGreaterThan(0)
+  })
+})
+
+describe('item length limits', () => {
+  it('keeps the summary to one sentence of at most 140 characters', () => {
+    expect(oneSentence('Short one. Then a second sentence.')).toBe('Short one.')
+    const long = `${'Un mot de plus '.repeat(20)}fin.`
+    const cut = oneSentence(long)
+    expect(cut.length).toBeLessThanOrEqual(140)
+    expect(cut.endsWith('…')).toBe(true)
+    expect(cut).not.toMatch(/\s$/)
+  })
+
+  it('keeps the intro to two sentences', () => {
+    expect(firstSentences('One. Two. Three.', 2)).toBe('One. Two.')
+    expect(firstSentences('Just one', 2)).toBe('Just one')
+  })
+
+  it('applies the limits to what the writer returns, and caps the key points at 4', async () => {
+    const llm = fakeLlm({
+      triage: triageBySection({ news: 1 }),
+      writer: () => ({
+        title: 'T',
+        summary: `${'Phrase longue. '.repeat(20)}`,
+        details: {
+          intro: 'Un. Deux. Trois. Quatre.',
+          key_points: ['a', 'b', 'c', 'd', 'e', 'f'],
+          commands: [],
+          why_it_matters: 'Pourquoi.',
+        },
+      }),
+    })
+    const issue = await generateIssue({ llm, fetch: page('x').fetch }, [cand(0)], { language: 'fr' })
+    const [item] = issue.items
+    expect(item.summary.length).toBeLessThanOrEqual(140)
+    expect(item.details.intro).toBe('Un. Deux.')
+    expect(item.details.key_points).toEqual(['a', 'b', 'c', 'd'])
   })
 })
 

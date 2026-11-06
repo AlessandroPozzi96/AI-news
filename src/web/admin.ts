@@ -21,7 +21,7 @@ const HEADERS = {
   'Content-Type': 'text/html; charset=utf-8',
   'X-Robots-Tag': 'noindex, nofollow',
   'Content-Security-Policy':
-    "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+    "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
   // 'no-referrer' would make browsers drop the Origin header on same-origin POSTs, which the CSRF check relies on.
   'Referrer-Policy': 'same-origin',
   'X-Content-Type-Options': 'nosniff',

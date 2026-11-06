@@ -9,7 +9,7 @@ const HEADERS = {
   'X-Robots-Tag': 'noindex, nofollow',
   // form-action 'self' is needed here (the confirmation button posts back), unlike the read-only pages.
   'Content-Security-Policy':
-    "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+    "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
   'Referrer-Policy': 'no-referrer',
   'Cache-Control': 'no-store',
 }
