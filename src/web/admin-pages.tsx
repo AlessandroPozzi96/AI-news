@@ -79,14 +79,6 @@ export function AdminPage(props: {
               </option>
             ))}
           </select>
-          <label for="items_per_issue">Articles par numéro</label>
-          <select id="items_per_issue" name="items_per_issue">
-            {range(LIMITS.itemsPerIssue).map((n) => (
-              <option value={String(n)} selected={s.itemsPerIssue === n}>
-                {n}
-              </option>
-            ))}
-          </select>
           <label for="language">Langue</label>
           <select id="language" name="language">
             <option value="fr" selected={s.language === 'fr'}>

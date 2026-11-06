@@ -6,7 +6,6 @@ export type Settings = {
   sendHour: number
   timezone: string
   frequencyWeeks: number
-  itemsPerIssue: number
   language: Language
 }
 
@@ -22,7 +21,6 @@ export async function loadSettings(db: D1Database): Promise<Settings> {
     sendHour: num('send_hour', 18),
     timezone: m.get('timezone') ?? 'Europe/Paris',
     frequencyWeeks: Math.max(1, num('frequency_weeks', 1)),
-    itemsPerIssue: num('items_per_issue', 5),
     language: m.get('language') === 'en' ? 'en' : 'fr',
   }
 }

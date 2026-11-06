@@ -39,9 +39,9 @@ Statut : phases 1 à 5 réalisées ; phase 6 en cours. Révision du 2026-11-07 :
 
 Déclenché le vendredi à 18:00 (Europe/Paris) par défaut ; l'envoi part quelques minutes après, le temps de la génération.
 
-1. **Collecte** (déterministe, sans LLM, sur les 7 derniers jours) à partir des sources ci-dessous.
-2. **Tri** : modèle économique (Haiku) reçoit 50 à 80 candidats et renvoie en JSON score, catégorie et doublons. Règle de focus : au moins 2 éléments sur 5 concernent Claude Code, s'il y en a.
-3. **Rédaction** : modèle de qualité (Sonnet) ; le script récupère le contenu complet de chaque source retenue, le modèle produit titre accrocheur, résumé de 2 phrases et page de détails dans la langue configurée.
+1. **Collecte** (déterministe, sans LLM) : sources datées (7 derniers jours) et sources non datées (catalogue, dépôts populaires, documentation), voir ci-dessous.
+2. **Tri** : un appel Haiku par section (`claude_code`, puis `must_have`, puis `news`), avec ses critères ; chaque appel renvoie un score, une catégorie et un `story`. Une histoire déjà retenue dans une section n'est pas reprise dans les suivantes. Les candidats datés sont plafonnés (150, les plus récents) ; les non datés sont toujours tous envoyés.
+3. **Rédaction** : modèle de qualité (Sonnet) ; le script récupère le contenu complet de chaque source retenue, le modèle produit titre, résumé d'une phrase et page de détails dans la langue configurée. Consigne propre à la section (un indispensable explique pourquoi et comment l'installer ; un élément Claude Code peut être un tutoriel).
 4. **Enregistrement** du numéro (`AAAA-Sxx`) et de ses éléments en D1.
 5. **Envoi** : un mail par destinataire via Resend, avec lien de désinscription signé. Chaque titre pointe vers `/issue/<semaine>/<item>`.
 
@@ -57,6 +57,11 @@ Déclenché le vendredi à 18:00 (Europe/Paris) par défaut ; l'envoi part quelq
 | GitHub : dépôts récents avec topics `claude-code`, `mcp-server`, `agent-skills` | API Search, triés par étoiles | Skills et outils tendance |
 | Blogs d'experts (Simon Willison, Latent Space) | RSS | Bonnes pratiques |
 | Recherche web de l'API Claude (1 appel/semaine) | Outil `web_search` | Filet de sécurité |
+| Catalogue manuel `src/collect/must-have.ts` (non daté) | Liste versionnée, éditée à la main ; première entrée Graphify | Outils et techniques « indispensables » (section `must_have`), prioritaires sur les dépôts populaires |
+| GitHub : dépôts populaires, topics ci-dessus, triés par étoiles (≥ 500), actifs depuis 90 jours (`pushed`), sans filtre de création (non daté) | API Search | Outils intemporels |
+| Documentation Claude Code, `https://code.claude.com/docs/llms.txt` (pages réglages et tutoriels, non datées) | Index llms.txt | Réserve de la section `claude_code` quand l'actualité est calme |
+
+Les sources non datées portent `evergreen` : elles n'entrent jamais dans la section `news` et ne sont jamais tronquées. Une fois publiées, elles ne sont plus proposées (`seen_urls`).
 
 Liste en configuration, extensible sans toucher à la logique. Risque : Reddit peut bloquer les IP Cloudflare ; dans ce cas retirer la source ou passer par un proxy.
 
@@ -65,13 +70,13 @@ Liste en configuration, extensible sans toucher à la logique. Risque : Reddit p
 - Contenu web passé comme donnée délimitée, sans outils pour le modèle d'écriture, avec consigne anti-injection.
 - HTML produit assaini avant affichage.
 - URLs déjà publiées stockées (`seen_urls`) : jamais de republication. Toutes les sources d'un même sujet (retenue et alternatives) sont marquées vues.
-- Pertinence (voir `adr/ADR-0001-relevance-guardrails.md`) : le tri attribue un `story` (identifiant kebab-case du sujet) ; un seul élément par `story`, les autres sources servent de repli si la source retenue est trop courte (< 400 caractères). Score minimal 5/10 : mieux vaut un numéro plus court que du remplissage ; moins de 3 éléments (ou moins que la taille configurée si elle est inférieure) = échec et alerte, rien n'est envoyé.
+- Pertinence (voir `adr/ADR-0001-relevance-guardrails.md`) : le tri attribue un `story` (identifiant kebab-case du sujet) ; un seul élément par `story`, les autres sources servent de repli si la source retenue est trop courte (< 400 caractères). Score minimal 5/10 (actualités seulement) : mieux vaut un numéro plus court que du remplissage ; moins de 3 éléments, ou aucun élément Claude Code = échec et alerte, rien n'est envoyé. Structure 3 / 2 / 2 : voir `adr/ADR-0003-issue-sections.md`.
 - Source trop courte pour un élément Hacker News : le fil de discussion (15 commentaires max) complète la page, signalé au rédacteur comme non vérifié. Les commandes ne sont jamais validées contre les commentaires, seulement contre la page. Les requêtes HTTP (`GET /v1/...`) ne sont pas des commandes.
 - Coût estimé : environ 1 $/mois (à confirmer sur les tarifs actuels).
 
 ## Données (D1)
 
-`settings`, `subscribers`, `issues` (statuts `draft` → `sending` → `sent`), `items`, `seen_urls`, `deliveries` (un enregistrement par numéro et destinataire, pour ne jamais envoyer deux fois), `runs` (journaux d'exécution et coût LLM).
+`settings`, `subscribers`, `issues` (statuts `draft` → `sending` → `sent`), `items` (colonne `section`, vide pour les anciens numéros, migration `0004`), `seen_urls`, `deliveries` (un enregistrement par numéro et destinataire, pour ne jamais envoyer deux fois), `runs` (journaux d'exécution et coût LLM).
 
 ## Points techniques à valider à l'implémentation
 

@@ -84,3 +84,37 @@ export function githubTrending(topics: string[], minStars: number): Collector {
       }),
   }
 }
+
+export const POPULAR_SOURCE_PREFIX = 'github-popular:'
+
+/**
+ * Well-established repositories of the topics, by stars, with no creation date filter: they are
+ * undated (evergreen). Recent activity is required so that abandoned repositories are left out.
+ */
+export function githubPopular(
+  topics: string[],
+  options: { minStars: number; activeWithinDays: number },
+): Collector {
+  return {
+    name: 'github-popular',
+    collect: (ctx) =>
+      gather(topics, async (topic) => {
+        const pushed = new Date(Date.now() - options.activeWithinDays * 86_400_000).toISOString().slice(0, 10)
+        const q = encodeURIComponent(`topic:${topic} stars:>=${options.minStars} pushed:>${pushed}`)
+        const data = await getJson<RepoSearchResponse>(
+          ctx.fetch,
+          `https://api.github.com/search/repositories?q=${q}&sort=stars&order=desc&per_page=10`,
+          githubHeaders(ctx),
+        )
+        return data.items.map((r) => ({
+          title: r.full_name,
+          url: r.html_url,
+          excerpt: truncate(r.description ?? '', 300),
+          source: `${POPULAR_SOURCE_PREFIX}${topic}`,
+          publishedAt: '',
+          evergreen: true,
+          metrics: { stars: r.stargazers_count },
+        }))
+      }),
+  }
+}

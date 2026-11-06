@@ -1,6 +1,7 @@
+import type { IssueItem } from '../generate/types'
 import { BRAND, LABELS, LOCALES } from '../i18n'
 import { weekNumber } from '../issues/week'
-import { formatDate, type Links, type RenderIssue } from './shared'
+import { formatDate, groupBySection, type Links, type RenderIssue } from './shared'
 
 const esc = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
@@ -17,21 +18,29 @@ export function renderEmail(issue: RenderIssue, links: Links): RenderedEmail {
   const subject = first ? `${BRAND} #${week} — ${first.title}` : `${BRAND} #${week}`
   const preheader = first?.summary ?? t.tagline
 
-  const itemsHtml = issue.items
-    .map((it) => {
-      const url = esc(links.item(it.position))
-      const badges = [
-        `<span style="display:inline-block;padding:2px 8px;border-radius:10px;background:#eef2ff;color:#3730a3;font-size:11px;font-weight:600;letter-spacing:.3px;text-transform:uppercase;">${esc(t.categories[it.category])}</span>`,
-        it.claudeCode
-          ? `<span style="display:inline-block;padding:2px 8px;border-radius:10px;background:#fff1e6;color:#9a3412;font-size:11px;font-weight:600;letter-spacing:.3px;text-transform:uppercase;margin-left:6px;">${esc(t.claudeCode)}</span>`
-          : '',
-      ].join('')
-      return `<tr><td style="padding:22px 0;border-top:1px solid #e5e7eb;">
+  const itemHtml = (it: IssueItem) => {
+    const url = esc(links.item(it.position))
+    const badges = [
+      `<span style="display:inline-block;padding:2px 8px;border-radius:10px;background:#eef2ff;color:#3730a3;font-size:11px;font-weight:600;letter-spacing:.3px;text-transform:uppercase;">${esc(t.categories[it.category])}</span>`,
+      it.claudeCode
+        ? `<span style="display:inline-block;padding:2px 8px;border-radius:10px;background:#fff1e6;color:#9a3412;font-size:11px;font-weight:600;letter-spacing:.3px;text-transform:uppercase;margin-left:6px;">${esc(t.claudeCode)}</span>`
+        : '',
+    ].join('')
+    return `<tr><td style="padding:22px 0;border-top:1px solid #e5e7eb;">
   <div style="margin-bottom:8px;">${badges}</div>
   <a href="${url}" style="font-size:19px;line-height:1.3;font-weight:700;color:#111827;text-decoration:none;">${it.position}. ${esc(it.title)}</a>
   <p style="margin:8px 0 10px;font-size:15px;line-height:1.55;color:#374151;">${esc(it.summary)}</p>
   <a href="${url}" style="font-size:14px;font-weight:600;color:#4338ca;text-decoration:none;">${esc(t.readMore)} &rarr;</a>
 </td></tr>`
+  }
+
+  // Sections are headed only when the issue has them (older issues have none).
+  const itemsHtml = groupBySection(issue.items)
+    .map((group) => {
+      const heading = group.section
+        ? `<tr><td style="padding:28px 0 0;font-size:13px;font-weight:700;color:#4338ca;text-transform:uppercase;letter-spacing:.6px;">${esc(t.sections[group.section])}</td></tr>`
+        : ''
+      return heading + group.items.map(itemHtml).join('\n')
     })
     .join('\n')
 
@@ -68,11 +77,14 @@ ${itemsHtml}
     `${BRAND} — ${t.weekLabel} ${week} (${dateText})`,
     t.tagline,
     '',
-    ...issue.items.flatMap((it) => [
-      `${it.position}. ${it.title} [${t.categories[it.category]}]`,
-      it.summary,
-      `${t.readMore}: ${links.item(it.position)}`,
-      '',
+    ...groupBySection(issue.items).flatMap((group) => [
+      ...(group.section ? [`== ${t.sections[group.section]} ==`, ''] : []),
+      ...group.items.flatMap((it) => [
+        `${it.position}. ${it.title} [${t.categories[it.category]}]`,
+        it.summary,
+        `${t.readMore}: ${links.item(it.position)}`,
+        '',
+      ]),
     ]),
     `${t.viewInBrowser}: ${links.issue}`,
     `${t.unsubscribe}: ${links.unsubscribe}`,

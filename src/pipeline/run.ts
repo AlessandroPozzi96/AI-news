@@ -76,7 +76,7 @@ async function failedRuns(db: D1Database, issueId: string): Promise<number> {
 export async function runPipeline(deps: PipelineDeps): Promise<PipelineResult> {
   const settings = await loadSettings(deps.db)
   const issueId = weekIdIn(deps.now, settings.timezone)
-  return runIssue(deps, settings, issueId, Math.min(MIN_ITEMS, settings.itemsPerIssue))
+  return runIssue(deps, settings, issueId, { minItems: MIN_ITEMS, requireClaudeCode: true })
 }
 
 /**
@@ -88,10 +88,12 @@ export async function runNow(deps: PipelineDeps): Promise<PipelineResult> {
   const week = weekIdIn(deps.now, settings.timezone)
   const latest = await latestManualIssue(deps.db, week)
   const issueId = latest && latest.status !== 'sent' ? latest.id : await nextManualIssueId(deps.db, week)
-  return runIssue(deps, settings, issueId, 1)
+  return runIssue(deps, settings, issueId, { minItems: 1, requireClaudeCode: false })
 }
 
-async function runIssue(deps: PipelineDeps, settings: Settings, issueId: string, minItems: number): Promise<PipelineResult> {
+type SendRule = { minItems: number; requireClaudeCode: boolean }
+
+async function runIssue(deps: PipelineDeps, settings: Settings, issueId: string, rule: SendRule): Promise<PipelineResult> {
   const existing = await getIssue(deps.db, issueId)
   if (existing?.status === 'sent') return { status: 'skipped', issueId, reason: 'already sent' }
 
@@ -123,16 +125,16 @@ async function runIssue(deps: PipelineDeps, settings: Settings, issueId: string,
         seen,
       )
       const generated = await generateIssue({ llm: deps.llm, fetch: deps.fetch }, collected.candidates, {
-        count: settings.itemsPerIssue,
         language: settings.language,
-        minClaudeCode: Math.ceil(settings.itemsPerIssue * 0.4),
-        maxClaudeCode: Math.ceil(settings.itemsPerIssue * 0.8),
         minScore: MIN_RELEVANCE_SCORE,
       })
       costUsd = generated.costUsd
       if (generated.items.length === 0) throw new Error('No item could be generated, nothing to send')
-      if (generated.items.length < minItems) {
-        throw new Error(`Only ${generated.items.length} relevant item(s) generated, at least ${minItems} required: nothing to send`)
+      const claudeCode = generated.items.filter((i) => i.claudeCode).length
+      if (generated.items.length < rule.minItems || (rule.requireClaudeCode && claudeCode === 0)) {
+        throw new Error(
+          `Only ${generated.items.length} item(s) generated (${claudeCode} Claude Code), at least ${rule.minItems}${rule.requireClaudeCode ? ' with one Claude Code item' : ''} required: nothing to send`,
+        )
       }
       await saveIssue(deps.db, issueId, settings.language, generated.items)
       await markUrlsSeen(deps.db, generated.consumedUrls, true)

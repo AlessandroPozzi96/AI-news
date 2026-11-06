@@ -1,10 +1,11 @@
-import type { Category, Language } from './generate/types'
+import type { Category, Language, Section } from './generate/types'
 
 export const BRAND = 'Dev Agents Weekly'
 
 export type Labels = {
   tagline: string
   categories: Record<Category, string>
+  sections: Record<Section, string>
   claudeCode: string
   readMore: string
   keyPoints: string
@@ -34,6 +35,7 @@ export const LABELS: Record<Language, Labels> = {
       command_shortcut: 'Commande',
       other: 'Actu',
     },
+    sections: { news: 'Actualités', must_have: 'Indispensables', claude_code: 'Claude Code' },
     claudeCode: 'Claude Code',
     readMore: 'Lire la suite',
     keyPoints: 'À retenir',
@@ -61,6 +63,7 @@ export const LABELS: Record<Language, Labels> = {
       command_shortcut: 'Command',
       other: 'News',
     },
+    sections: { news: 'News', must_have: 'Must-haves', claude_code: 'Claude Code' },
     claudeCode: 'Claude Code',
     readMore: 'Read more',
     keyPoints: 'Key points',

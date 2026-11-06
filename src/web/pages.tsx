@@ -2,7 +2,7 @@ import type { Child } from 'hono/jsx'
 import type { IssueItem } from '../generate/types'
 import { BRAND, LABELS, LOCALES } from '../i18n'
 import { weekNumber } from '../issues/week'
-import { formatDate, safeHref, type Links, type RenderIssue } from '../render/shared'
+import { formatDate, groupBySection, safeHref, type Links, type RenderIssue } from '../render/shared'
 
 // Colors are tokens so dark mode is a single override, not scattered per component.
 const CSS = `
@@ -80,18 +80,23 @@ export function IssuePage(props: { issue: RenderIssue; links: Links }) {
           {BRAND} · {t.weekLabel} {week} · {formatDate(issue.date, LOCALES[issue.language])}
         </span>
         <h1>{t.tagline}</h1>
-        <ol class="items">
-          {issue.items.map((it) => (
-            <li>
-              <Chips item={it} lang={issue.language} />
-              <a class="title" href={links.item(it.position)}>
-                {it.position}. {it.title}
-              </a>
-              <p>{it.summary}</p>
-              <a href={links.item(it.position)}>{t.readMore} →</a>
-            </li>
-          ))}
-        </ol>
+        {groupBySection(issue.items).map((group) => (
+          <>
+            {group.section ? <h2>{t.sections[group.section]}</h2> : null}
+            <ol class="items" start={group.items[0].position}>
+              {group.items.map((it) => (
+                <li>
+                  <Chips item={it} lang={issue.language} />
+                  <a class="title" href={links.item(it.position)}>
+                    {it.position}. {it.title}
+                  </a>
+                  <p>{it.summary}</p>
+                  <a href={links.item(it.position)}>{t.readMore} →</a>
+                </li>
+              ))}
+            </ol>
+          </>
+        ))}
       </div>
       <footer>
         <a href={links.unsubscribe}>{t.unsubscribe}</a>

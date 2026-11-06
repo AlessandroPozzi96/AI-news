@@ -33,7 +33,7 @@ Principe : traiter d'abord le risque principal (la qualité du contenu généré
 ## Phase 3 — Génération (phase la plus risquée)
 
 - Interface LLM interchangeable, implémentation Claude.
-- Étape de tri (Haiku) avec sortie JSON validée, règle des 2 éléments Claude Code sur 5.
+- Étape de tri (Haiku) avec sortie JSON validée, une passe par section (structure 3 / 2 / 2, voir `adr/ADR-0003-issue-sections.md`).
 - Étape de rédaction (Sonnet) : titre, résumé, page de détails, en français ou en anglais.
 - Garde-fous : contenu web en données délimitées, aucun outil pour le modèle d'écriture, assainissement du HTML.
 - Mode **dry-run** : produit un numéro complet dans un fichier local, sans envoi ni écriture en production.
@@ -41,7 +41,7 @@ Principe : traiter d'abord le risque principal (la qualité du contenu généré
 
 **Fait quand** : tu relis un numéro généré et le juges digne d'être envoyé (titres, pertinence, exactitude des liens et commandes).
 
-**État** : garde-fous de pertinence ajoutés après le premier dry-run réel (voir `adr/ADR-0001-relevance-guardrails.md`) ; le dry-run du 2026-11-03 donne un numéro cohérent. Reste ta relecture.
+**État** : garde-fous de pertinence ajoutés après le premier dry-run réel (voir `adr/ADR-0001-relevance-guardrails.md`) ; le dry-run du 2026-11-03 donne un numéro cohérent. Structure en sections 3 / 2 / 2 avec sources non datées (voir `adr/ADR-0003-issue-sections.md`) : à valider par un dry-run réel avant l'envoi. Reste ta relecture.
 
 ## Phase 4 — Pages publiques et template d'e-mail
 
@@ -64,7 +64,7 @@ Principe : traiter d'abord le risque principal (la qualité du contenu généré
 
 ## Phase 6 — Dashboard admin
 
-- Réglages : jour/heure, fréquence, nombre d'éléments (5/10), langue.
+- Réglages : jour/heure, fréquence, langue (la structure du numéro est fixe, voir ADR-0003).
 - Destinataires : ajout, suppression, activation.
 - Actions : prévisualiser le prochain numéro, « envoyer maintenant », relancer un échec, historique.
 - Protection : jeton `ADMIN_TOKEN` (secret Worker, ≥ 16 caractères) + cookie de session signé (HttpOnly, SameSite=Strict, 7 jours) + contrôle d'`Origin` sur les POST. Sans jeton, `/admin` répond 404. Choisi plutôt que Cloudflare Access (configuration manuelle dans le dashboard, non vérifiable sur `workers.dev`).

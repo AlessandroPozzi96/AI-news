@@ -1,4 +1,5 @@
 import type { Candidate, Collector } from '../src/collect/types'
+import type { Section } from '../src/generate/types'
 import type { GenerateRequest, Llm, Usage } from '../src/llm/types'
 import type { MailMessage, MailResult, Mailer } from '../src/mail/types'
 
@@ -10,12 +11,22 @@ export const candidate = (n: number, source = 'src'): Candidate => ({
   publishedAt: '2026-10-30T00:00:00Z',
 })
 
+/** Undated candidate (catalogue, popular repository or documentation page). */
+export const evergreenCandidate = (n: number, source: string): Candidate => ({
+  title: `Evergreen ${source} ${n}`,
+  url: `https://example.com/${source}/${n}`,
+  excerpt: `excerpt ${n}`,
+  source,
+  publishedAt: '',
+  evergreen: true,
+})
+
 export const collectorOf = (candidates: Candidate[]): Collector => ({
   name: 'fake',
   collect: async () => ({ candidates, errors: [] }),
 })
 
-type Handler = (req: GenerateRequest<unknown>) => unknown
+export type Handler = (req: GenerateRequest<unknown>) => unknown
 
 export function fakeLlm(handlers: { triage: Handler; writer: Handler }): Llm & { calls: GenerateRequest<unknown>[] } {
   const calls: GenerateRequest<unknown>[] = []
@@ -36,14 +47,16 @@ export const writerOk: Handler = (req) => ({
   details: { intro: 'Context.', key_points: ['a', 'b', 'c'], commands: [], why_it_matters: 'Because.' },
 })
 
-export const triageOf = (n: number): Handler => () => ({
-  picks: Array.from({ length: n }, (_, i) => ({
-    id: i,
-    category: 'other',
-    score: 10 - i,
-    claude_code_related: i % 2 === 0,
-  })),
-})
+/** The section a triage request was made for. */
+export const sectionOf = (req: GenerateRequest<unknown>): string => /Section: (\w+)/.exec(req.user)?.[1] ?? ''
+
+/** `n` picks, best first, pointing at the first `n` entries of the pool. */
+export const picksOf = (n: number) => Array.from({ length: n }, (_, i) => ({ id: i, category: 'other', score: 10 - i }))
+
+/** Triage answer per section: `counts[section]` picks, nothing for sections not listed. */
+export const triageBySection =
+  (counts: Partial<Record<Section | string, number>>): Handler =>
+  (req) => ({ picks: picksOf(counts[sectionOf(req)] ?? 0) })
 
 export const longPage = (async () =>
   new Response(`<html><main>${'Real article content. '.repeat(40)}</main></html>`)) as typeof fetch

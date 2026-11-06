@@ -1,4 +1,4 @@
-import type { IssueItem, Language } from '../generate/types'
+import type { IssueItem, Language, Section } from '../generate/types'
 
 export type RenderIssue = {
   id: string
@@ -22,6 +22,19 @@ export function safeHref(url: string): string | null {
   } catch {
     return null
   }
+}
+
+export type SectionGroup = { section?: Section; items: IssueItem[] }
+
+/** Consecutive items sharing a section, in issue order. Items without a section form one group with no heading. */
+export function groupBySection(items: IssueItem[]): SectionGroup[] {
+  const groups: SectionGroup[] = []
+  for (const item of items) {
+    const last = groups[groups.length - 1]
+    if (last && last.section === item.section) last.items.push(item)
+    else groups.push({ section: item.section, items: [item] })
+  }
+  return groups
 }
 
 export function formatDate(date: Date, locale: string): string {

@@ -19,17 +19,16 @@ describe('session', () => {
 })
 
 describe('validation', () => {
-  const good = { send_day: '5', send_hour: '18', frequency_weeks: '1', items_per_issue: '5', language: 'fr' }
+  const good = { send_day: '5', send_hour: '18', frequency_weeks: '1', language: 'fr' }
 
   it('accepts valid settings and rejects out-of-range or malformed ones', () => {
     expect(parseSettingsForm(good)).toMatchObject({ ok: true, values: { sendDay: 5, sendHour: 18 } })
+    expect(parseSettingsForm(good)).toMatchObject({ ok: true, values: { frequencyWeeks: 1, language: 'fr' } })
     for (const bad of [
       { send_day: '8' },
       { send_hour: '24' },
       { send_hour: '-1' },
       { frequency_weeks: '0' },
-      { items_per_issue: '11' },
-      { items_per_issue: '5; DROP' },
       { language: 'de' },
     ]) {
       expect(parseSettingsForm({ ...good, ...bad }).ok).toBe(false)
@@ -111,14 +110,10 @@ describe('admin routes', () => {
   it('saves settings and manages subscribers once logged in', async () => {
     const cookie = await login()
 
-    const saved = await post(
-      '/admin/settings',
-      { send_day: '4', send_hour: '9', frequency_weeks: '2', items_per_issue: '10', language: 'en' },
-      cookie,
-    )
+    const saved = await post('/admin/settings', { send_day: '4', send_hour: '9', frequency_weeks: '2', language: 'en' }, cookie)
     expect(saved.headers.get('Location')).toBe('/admin?msg=saved')
-    const row = await env.DB.prepare("SELECT value FROM settings WHERE key = 'items_per_issue'").first<{ value: string }>()
-    expect(row?.value).toBe('10')
+    const row = await env.DB.prepare("SELECT value FROM settings WHERE key = 'send_hour'").first<{ value: string }>()
+    expect(row?.value).toBe('9')
 
     const invalid = await post('/admin/settings', { send_day: '9' }, cookie)
     expect(invalid.headers.get('Location')).toBe('/admin?msg=bad_settings')
@@ -143,6 +138,8 @@ describe('admin routes', () => {
     const body = await page.text()
     expect(body).toContain('reader@example.com')
     expect(body).toContain('Réglages enregistrés.')
+    expect(body).not.toContain('items_per_issue')
+    expect(body).not.toContain('Articles par numéro')
   })
 
   it('shows the send-now button on the dashboard', async () => {

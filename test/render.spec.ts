@@ -114,6 +114,49 @@ describe('web pages', () => {
   })
 })
 
+describe('sections', () => {
+  const sectioned = (): IssueItem[] => [
+    item(1, { section: 'news' }),
+    item(2, { section: 'news' }),
+    item(3, { section: 'news' }),
+    item(4, { section: 'must_have' }),
+    item(5, { section: 'must_have' }),
+    item(6, { section: 'claude_code', claudeCode: true }),
+    item(7, { section: 'claude_code', claudeCode: true }),
+  ]
+
+  it('groups the e-mail under one heading per section, in order (text version)', () => {
+    const mail = renderEmail(issue(sectioned()), links)
+    const at = (s: string) => mail.text.indexOf(s)
+    expect(at('Actualités')).toBeGreaterThanOrEqual(0)
+    expect(at('Actualités')).toBeLessThan(at('Indispensables'))
+    expect(at('Indispensables')).toBeLessThan(at('Claude Code'))
+    expect(mail.text.split('Actualités')).toHaveLength(2)
+  })
+
+  it('shows the section headings in the html e-mail', () => {
+    const mail = renderEmail(issue(sectioned(), 'en'), links)
+    expect(mail.html).toContain('>News<')
+    expect(mail.html).toContain('>Must-haves<')
+    expect(mail.html).toContain('>Claude Code<')
+  })
+
+  it('renders an issue without sections (older issues) with no heading', () => {
+    const mail = renderEmail(issue([item(1), item(2)]), links)
+    expect(mail.html).not.toContain('Indispensables')
+    expect(mail.html).not.toContain('Actualités')
+    expect(mail.text).not.toContain('Indispensables')
+  })
+
+  it('shows the section headings on the issue page', async () => {
+    const html = await renderPage(IssuePage({ issue: issue(sectioned()), links }))
+    expect(html).toContain('Actualités')
+    expect(html).toContain('Indispensables')
+    const plain = await renderPage(IssuePage({ issue: issue([item(1)]), links }))
+    expect(plain).not.toContain('Actualités')
+  })
+})
+
 describe('store and routes', () => {
   beforeAll(async () => {
     await applyD1Migrations(env.DB, env.TEST_MIGRATIONS)
@@ -149,5 +192,27 @@ describe('store and routes', () => {
     expect((await SELF.fetch('https://x.test/issue/2026-S42/9')).status).toBe(404)
     expect((await SELF.fetch('https://x.test/issue/..%2f..%2fetc')).status).toBe(404)
     expect((await SELF.fetch("https://x.test/issue/2026-S42'--")).status).toBe(404)
+  })
+
+  it('stores the section of each item, and reads older rows (no section) without one', async () => {
+    await saveIssue(env.DB, '2026-S43', 'fr', [item(1, { section: 'must_have' }), item(2)])
+    const stored = await getIssue(env.DB, '2026-S43')
+    expect(stored?.items.map((i) => i.section)).toEqual(['must_have', undefined])
+
+    await env.DB.prepare(
+      "INSERT INTO issues (id, language, status, sent_at) VALUES ('2026-S30', 'fr', 'sent', datetime('now'))",
+    ).run()
+    await env.DB.prepare(
+      `INSERT INTO items (issue_id, position, category, title, summary, details_json, source_url, source_name, claude_code)
+       VALUES ('2026-S30', 1, 'other', 'Old title', 'Old summary', ?, 'https://example.com/old', 'example', 0)`,
+    )
+      .bind(JSON.stringify({ intro: 'i', key_points: [], commands: [], why_it_matters: 'w' }))
+      .run()
+    const res = await SELF.fetch('https://x.test/issue/2026-S30')
+    expect(res.status).toBe(200)
+    const body = await res.text()
+    expect(body).toContain('Old title')
+    expect(body).not.toContain('Actualités')
+    expect(body).not.toContain('Indispensables')
   })
 })

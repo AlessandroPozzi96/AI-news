@@ -3,7 +3,10 @@ export type Candidate = {
   url: string
   excerpt: string
   source: string
+  /** ISO date; empty for undated candidates. */
   publishedAt: string
+  /** Undated (catalogue, popular repository, documentation): never a news item, never truncated. */
+  evergreen?: boolean
   /** Comment thread (e.g. Hacker News) used to enrich a source that is too thin on its own. */
   discussionUrl?: string
   metrics?: { points?: number; comments?: number; stars?: number }

@@ -1,4 +1,4 @@
-import { CATEGORIES, DetailsSchema, type IssueItem, type Language } from '../generate/types'
+import { CATEGORIES, DetailsSchema, SECTIONS, type IssueItem, type Language, type Section } from '../generate/types'
 
 export type StoredIssue = {
   id: string
@@ -12,6 +12,7 @@ export type StoredIssue = {
 type IssueRow = { id: string; language: Language; status: string; created_at: string; sent_at: string | null }
 type ItemRow = {
   position: number
+  section: string
   category: string
   title: string
   summary: string
@@ -25,8 +26,11 @@ function toItem(row: ItemRow): IssueItem | null {
   const category = CATEGORIES.find((c) => c === row.category)
   const details = DetailsSchema.safeParse(JSON.parse(row.details_json))
   if (!category || !details.success) return null
+  // Issues written before sections have an empty section: they are shown without headings.
+  const section = SECTIONS.find((s): s is Section => s === row.section)
   return {
     position: row.position,
+    ...(section ? { section } : {}),
     category,
     claudeCode: row.claude_code === 1,
     title: row.title,
@@ -100,8 +104,8 @@ export async function saveIssue(
   if (existing && existing.status !== 'draft') throw new Error(`Issue ${id} is already ${existing.status}`)
 
   const insertItem = db.prepare(
-    `INSERT INTO items (issue_id, position, category, title, summary, details_json, source_url, source_name, claude_code)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO items (issue_id, position, section, category, title, summary, details_json, source_url, source_name, claude_code)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
   await db.batch([
     db.prepare('INSERT INTO issues (id, language) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET language = excluded.language').bind(id, language),
@@ -110,6 +114,7 @@ export async function saveIssue(
       insertItem.bind(
         id,
         it.position,
+        it.section ?? '',
         it.category,
         it.title,
         it.summary,

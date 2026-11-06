@@ -3,7 +3,7 @@ import type { Llm, Usage } from '../llm/types'
 import type { Candidate } from '../collect/types'
 import { fetchDiscussion, fetchSourceText } from './source-text'
 import type { Pick } from './triage'
-import { DetailsSchema, LANGUAGE_NAMES, type IssueItem, type Language } from './types'
+import { DetailsSchema, LANGUAGE_NAMES, type IssueItem, type Language, type Section } from './types'
 
 const WrittenSchema = z.object({
   title: z.string(),
@@ -11,10 +11,20 @@ const WrittenSchema = z.object({
   details: DetailsSchema,
 })
 
-function systemPrompt(language: Language): string {
+const SECTION_BRIEF: Record<Section, string> = {
+  news: 'This is recent news: say what changed and why it matters now.',
+  must_have:
+    'This is a must-have tool or technique for developers using AI agents: say why it is indispensable, and how to install or enable it (install steps go in commands, copied verbatim from the source).',
+  claude_code:
+    'This is about Claude Code: it may be a tutorial, a setting, a token-saving tip or a novelty. For a tutorial, key_points are the steps in order.',
+}
+
+function systemPrompt(language: Language, section: Section): string {
   return `You write items for a weekly newsletter aimed at software developers who use AI coding agents (Claude Code first).
 
 Write in ${LANGUAGE_NAMES[language]}. Keep product names, code, commands and file names exactly as in the source.
+
+${SECTION_BRIEF[section]}
 
 For the given source, produce:
 - title: catchy and specific, under 80 characters. Intriguing, but it must be true to the source: no clickbait, no exaggeration.
@@ -34,7 +44,7 @@ Rules:
 const MIN_SOURCE_CHARS = 400
 const MAX_ALTERNATIVES = 2
 
-const norm =(s: string) => s.replace(/`/g, '').replace(/\s+/g, ' ').trim()
+const norm = (s: string) => s.replace(/`/g, '').replace(/\s+/g, ' ').trim()
 
 const HTTP_REQUEST = /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+\//
 
@@ -64,6 +74,7 @@ export async function writeItem(
   doFetch: typeof fetch,
   pick: Pick,
   language: Language,
+  section: Section,
 ): Promise<{ item: Omit<IssueItem, 'position'>; usage: Usage }> {
   // The best source first, then other sources of the same story if it is too thin.
   let candidate = pick.candidate
@@ -79,18 +90,20 @@ export async function writeItem(
     }
   }
   if (!source) throw new Error(`source too thin to summarize (${longest} chars)`)
+  const published = candidate.evergreen ? 'undated (evergreen)' : candidate.publishedAt.slice(0, 10)
   const { data, usage } = await llm.generate({
     tier: 'writer',
-    system: systemPrompt(language),
-    user: `Source title: ${candidate.title}\nSource name: ${candidate.source}\nPublished: ${candidate.publishedAt.slice(0, 10)}\n\n<source>\n${source.material}\n</source>`,
+    system: systemPrompt(language, section),
+    user: `Source title: ${candidate.title}\nSource name: ${candidate.source}\nPublished: ${published}\n\n<source>\n${source.material}\n</source>`,
     schema: WrittenSchema,
     maxTokens: 8000,
   })
   return {
     usage,
     item: {
+      section,
       category: pick.category,
-      claudeCode: pick.claudeCode,
+      claudeCode: section === 'claude_code',
       title: data.title.trim(),
       summary: data.summary.trim(),
       details: { ...data.details, commands: keepVerbatimCommands(data.details.commands, source.page) },

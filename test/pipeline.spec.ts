@@ -6,16 +6,22 @@ import { resendMailer } from '../src/mail/resend'
 import { runIfDue, runNow, runPipeline, type PipelineDeps } from '../src/pipeline/run'
 import { isDue, weekIdIn } from '../src/pipeline/schedule'
 import type { Settings } from '../src/pipeline/settings'
-import { candidate, collectorOf, fakeLlm, fakeMailer, longPage, triageOf, writerOk } from './helpers'
+import { candidate, collectorOf, evergreenCandidate, fakeLlm, fakeMailer, longPage, triageBySection, writerOk } from './helpers'
 
 const settings: Settings = {
   sendDay: 5,
   sendHour: 18,
   timezone: 'Europe/Paris',
   frequencyWeeks: 1,
-  itemsPerIssue: 5,
   language: 'fr',
 }
+
+/** A full pool: dated news and Claude Code candidates, a catalogue and the Claude Code docs. */
+const FULL_POOL = [
+  ...Array.from({ length: 12 }, (_, i) => candidate(i)),
+  ...Array.from({ length: 3 }, (_, i) => evergreenCandidate(i, 'catalogue')),
+  ...Array.from({ length: 3 }, (_, i) => evergreenCandidate(i, 'claude-docs')),
+]
 const FRIDAY_1800_SUMMER = new Date('2026-07-10T16:00:00Z') // UTC+2
 const FRIDAY_1800_WINTER = new Date('2026-10-30T17:00:00Z') // UTC+1
 const NOT_SENT = { currentWeekSent: false, lastSentAt: null }
@@ -99,14 +105,14 @@ const BASE = 'https://news.test'
 function deps(over: Partial<PipelineDeps> = {}): PipelineDeps & { mailer: ReturnType<typeof fakeMailer>; llm: ReturnType<typeof fakeLlm> } {
   return {
     db: env.DB,
-    llm: fakeLlm({ triage: triageOf(10), writer: writerOk }),
+    llm: fakeLlm({ triage: triageBySection({ claude_code: 3, must_have: 3, news: 4 }), writer: writerOk }),
     fetch: longPage,
     mailer: fakeMailer(),
     now: FRIDAY_1800_WINTER,
     baseUrl: BASE,
     unsubscribeSecret: 'test-secret',
     adminEmail: 'admin@x.test',
-    collectors: [collectorOf(Array.from({ length: 12 }, (_, i) => candidate(i)))],
+    collectors: [collectorOf(FULL_POOL)],
     ...over,
   } as PipelineDeps & { mailer: ReturnType<typeof fakeMailer>; llm: ReturnType<typeof fakeLlm> }
 }
@@ -129,6 +135,15 @@ describe('pipeline', () => {
     const res = await runPipeline(d)
     expect(res).toMatchObject({ status: 'sent', issueId: '2026-S44', delivered: 2 })
     expect(d.mailer.sent.map((m) => m.to)).toEqual(['a@x.test', 'b@x.test'])
+    const sections = await env.DB.prepare('SELECT section, COUNT(*) AS n FROM items GROUP BY section ORDER BY section').all<{
+      section: string
+      n: number
+    }>()
+    expect(sections.results).toEqual([
+      { section: 'claude_code', n: 2 },
+      { section: 'must_have', n: 2 },
+      { section: 'news', n: 3 },
+    ])
 
     const mail = d.mailer.sent[0]
     expect(mail.html).toContain(`${BASE}/issue/2026-S44/1`)
@@ -140,7 +155,7 @@ describe('pipeline', () => {
     const issue = await env.DB.prepare('SELECT status, sent_at FROM issues').first<{ status: string; sent_at: string }>()
     expect(issue?.status).toBe('sent')
     expect(issue?.sent_at).toBeTruthy()
-    expect((await env.DB.prepare("SELECT COUNT(*) n FROM seen_urls WHERE published = 1").first<{ n: number }>())?.n).toBe(5)
+    expect((await env.DB.prepare("SELECT COUNT(*) n FROM seen_urls WHERE published = 1").first<{ n: number }>())?.n).toBe(7)
     const run = await env.DB.prepare('SELECT status, llm_cost_usd FROM runs').first<{ status: string; llm_cost_usd: number }>()
     expect(run?.status).toBe('ok')
     expect(run?.llm_cost_usd).toBeGreaterThan(0)
@@ -181,32 +196,30 @@ describe('pipeline', () => {
     expect(d.llm.calls.length).toBe(llmCalls)
   })
 
-  it('refuses to send an issue with fewer than 3 relevant items and stores nothing', async () => {
-    const two = () => ({
-      picks: [
-        { id: 0, category: 'other', score: 9, claude_code_related: true },
-        { id: 1, category: 'other', score: 8, claude_code_related: false },
-      ],
+  it('refuses to send fewer than 3 items and stores nothing', async () => {
+    const d = deps({
+      llm: fakeLlm({ triage: triageBySection({ claude_code: 2 }), writer: writerOk }),
+      collectors: [collectorOf(Array.from({ length: 12 }, (_, i) => candidate(i)))],
     })
-    const d = deps({ llm: fakeLlm({ triage: two, writer: writerOk }) })
-    await expect(runPipeline(d)).rejects.toThrow('Only 2 relevant item(s)')
+    await expect(runPipeline(d)).rejects.toThrow('Only 2 item(s)')
+    expect(d.mailer.sent.filter((m) => m.to === 'a@x.test')).toHaveLength(0)
+    expect(await env.DB.prepare('SELECT COUNT(*) n FROM items').first<{ n: number }>()).toMatchObject({ n: 0 })
+  })
+
+  it('refuses to send an issue without any Claude Code item, even with 5 others', async () => {
+    const d = deps({ llm: fakeLlm({ triage: triageBySection({ must_have: 3, news: 3 }), writer: writerOk }) })
+    await expect(runPipeline(d)).rejects.toThrow('with one Claude Code item required')
     expect(d.mailer.sent.filter((m) => m.to === 'a@x.test')).toHaveLength(0)
   })
 
-  it('accepts a shorter issue when the configured size is below the minimum', async () => {
-    await env.DB.prepare("UPDATE settings SET value = '2' WHERE key = 'items_per_issue'").run()
-    try {
-      const two = () => ({
-        picks: [
-          { id: 0, category: 'other', score: 9, claude_code_related: true },
-          { id: 1, category: 'other', score: 8, claude_code_related: false },
-        ],
-      })
-      const d = deps({ llm: fakeLlm({ triage: two, writer: writerOk }) })
-      expect(await runPipeline(d)).toMatchObject({ status: 'sent' })
-    } finally {
-      await env.DB.prepare("UPDATE settings SET value = '5' WHERE key = 'items_per_issue'").run()
-    }
+  it('sends with 3 items as soon as one of them is Claude Code', async () => {
+    const d = deps({
+      llm: fakeLlm({ triage: triageBySection({ claude_code: 1, news: 2 }), writer: writerOk }),
+      collectors: [collectorOf(Array.from({ length: 12 }, (_, i) => candidate(i)))],
+    })
+    expect(await runPipeline(d)).toMatchObject({ status: 'sent', delivered: 2 })
+    const stored = await env.DB.prepare('SELECT COUNT(*) n FROM items WHERE claude_code = 1').first<{ n: number }>()
+    expect(stored?.n).toBe(1)
   })
 
   it('alerts the admin on failure and records the run', async () => {
