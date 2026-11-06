@@ -1,5 +1,6 @@
 import { applyD1Migrations, env, SELF } from 'cloudflare:test'
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { nextManualIssueId } from '../src/issues/store'
 import { signUnsubscribeToken, verifyUnsubscribeToken } from '../src/mail/token'
 import { resendMailer } from '../src/mail/resend'
 import { runIfDue, runNow, runPipeline, type PipelineDeps } from '../src/pipeline/run'
@@ -244,6 +245,29 @@ describe('pipeline', () => {
     expect(await runIfDue(d)).toMatchObject({ status: 'skipped', reason: 'not due' })
     expect(d.mailer.sent).toHaveLength(0)
     expect((await runIfDue(deps())).status).toBe('sent')
+  })
+})
+
+describe('nextManualIssueId', () => {
+  beforeAll(async () => {
+    await applyD1Migrations(env.DB, env.TEST_MIGRATIONS)
+  })
+  beforeEach(reset)
+
+  const seed = (id: string) => env.DB.prepare("INSERT INTO issues (id, language, status) VALUES (?, 'fr', 'sent')").bind(id).run()
+
+  it('orders suffixes numerically, so -10 follows -9', async () => {
+    await seed('2026-S45-9')
+    expect(await nextManualIssueId(env.DB, '2026-S45')).toBe('2026-S45-10')
+    await seed('2026-S45-10')
+    expect(await nextManualIssueId(env.DB, '2026-S45')).toBe('2026-S45-11')
+  })
+
+  it('ignores ids that are not manual issues of that week', async () => {
+    await seed('2026-S45')
+    await seed('2026-S45-2abc')
+    await seed('2026-S46-7')
+    expect(await nextManualIssueId(env.DB, '2026-S45')).toBe('2026-S45-2')
   })
 })
 

@@ -11,9 +11,10 @@ on:
         type: boolean
         default: false
 
-# Never two runs at once: a long run must not be overlapped by the next hourly trigger.
+# Hourly runs never overlap. Manual runs have their own group: GitHub keeps only one pending run per group,
+# so sharing it would let an hourly trigger cancel a pending "send now".
 concurrency:
-  group: newsletter
+  group: newsletter-${{ github.event_name }}
   cancel-in-progress: false
 
 permissions:

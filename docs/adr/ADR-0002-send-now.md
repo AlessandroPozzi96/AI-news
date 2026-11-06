@@ -18,7 +18,9 @@ Le propriétaire veut pouvoir envoyer un numéro immédiatement depuis `/admin`,
 | Erreurs | Tout code HTTP non 2xx lève une erreur sans le jeton ni le corps de la réponse. L'interface affiche « GitHub a refusé » |
 
 ## Conséquences
-- Un envoi manuel passe par la file d'attente de GitHub Actions : quelques minutes de délai, et le workflow partage le verrou `concurrency: newsletter` avec le cron horaire.
+- Un envoi manuel passe par GitHub Actions : quelques minutes de délai. Son groupe de concurrence est distinct de celui du cron, car GitHub ne garde qu'un run en attente par groupe : un cron horaire annulerait sinon un envoi manuel en attente. Un manuel et un automatique peuvent donc tourner en même temps, sur des numéros différents ; ils peuvent exceptionnellement retenir la même actualité.
+- Si plusieurs clics s'accumulent pendant qu'un envoi tourne, GitHub ne conserve que le dernier run en attente.
+- Un envoi manuel marque ses liens comme vus : ils ne seront pas republiés. L'automatique suivant dispose donc de moins de candidats et peut échouer sous le minimum de 3 éléments, avec alerte. Accepté : ne jamais répéter une actualité prime sur l'indépendance totale.
 - Les numéros manuels sont publics par lien comme les automatiques (`/issue/2026-S45-2`) et apparaissent dans l'historique.
 - Un envoi manuel n'est pas soumis à la fréquence configurée : c'est voulu, mais le propriétaire doit savoir qu'il peut envoyer plusieurs fois par semaine.
 - Un jeton GitHub compromis ne permet que de lancer ce workflow sur ce dépôt.

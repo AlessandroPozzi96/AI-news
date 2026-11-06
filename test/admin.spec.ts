@@ -1,7 +1,8 @@
 import { applyD1Migrations, env, SELF } from 'cloudflare:test'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createSession, verifySession } from '../src/admin/session'
 import { normalizeEmail, parseSettingsForm } from '../src/admin/settings'
+import { adminRoutes } from '../src/web/admin'
 
 const ORIGIN = 'https://x.test'
 
@@ -160,6 +161,38 @@ describe('admin routes', () => {
   it('send-now rejects cross-origin posts', async () => {
     const cookie = await login()
     expect((await post('/admin/send-now', {}, cookie, 'https://evil.test')).status).toBe(403)
+  })
+
+  describe('send-now with GitHub configured', () => {
+    afterEach(() => vi.unstubAllGlobals())
+
+    const send = async (over: Record<string, string | undefined> = {}) =>
+      adminRoutes.request(
+        `${ORIGIN}/admin/send-now`,
+        { method: 'POST', headers: { Origin: ORIGIN, Cookie: await login() } },
+        { ...env, GH_DISPATCH_TOKEN: 'test-dispatch-token', GITHUB_REPO: 'owner/repo', ...over },
+      )
+
+    it('reports a started send when GitHub accepts', async () => {
+      vi.stubGlobal('fetch', async () => new Response(null, { status: 204 }))
+      expect((await send()).headers.get('Location')).toBe('/admin?msg=send_started')
+    })
+
+    it('reports a failure when GitHub refuses', async () => {
+      vi.stubGlobal('fetch', async () => new Response('nope', { status: 403 }))
+      expect((await send()).headers.get('Location')).toBe('/admin?msg=send_failed')
+    })
+
+    it('reports a failure when the request itself fails', async () => {
+      vi.stubGlobal('fetch', async () => {
+        throw new Error('network down')
+      })
+      expect((await send()).headers.get('Location')).toBe('/admin?msg=send_failed')
+    })
+
+    it('reports a missing repository like a missing token', async () => {
+      expect((await send({ GITHUB_REPO: undefined })).headers.get('Location')).toBe('/admin?msg=send_unconfigured')
+    })
   })
 
   it('send-now reports when the GitHub token is not configured', async () => {
