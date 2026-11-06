@@ -44,7 +44,8 @@ export function sectionPools(section: Section, candidates: Candidate[]): Candida
         undated.filter((c) => c.source.startsWith(POPULAR_SOURCE_PREFIX)),
       ]
     case 'claude_code':
-      return [dated, undated.filter((c) => c.source === CLAUDE_DOCS_SOURCE)]
+      // One recent item, one from the documentation, then back to recent items if the documentation fell short.
+      return [dated, undated.filter((c) => c.source === CLAUDE_DOCS_SOURCE), dated]
   }
 }
 
@@ -66,7 +67,7 @@ export async function generateIssue(
   const attempt = async (section: Section, pick: Pick): Promise<void> => {
     try {
       const out = await writeItem(deps.llm, deps.fetch, pick, options.language, section)
-      usage.push(out.usage)
+      usage.push(...out.usage)
       written.push({ item: out.item, section, score: pick.score })
       for (const url of [out.item.sourceUrl, pick.candidate.url, ...(pick.alternatives ?? []).map((c) => c.url)]) {
         consumed.add(normalizeUrl(url))
@@ -78,9 +79,12 @@ export async function generateIssue(
   }
 
   for (const section of SELECTION_ORDER) {
-    for (const pool of sectionPools(section, candidates)) {
-      const remaining = SECTION_COUNTS[section] - countOf(section)
-      if (remaining <= 0) break
+    for (const [index, pool] of sectionPools(section, candidates).entries()) {
+      const missing = SECTION_COUNTS[section] - countOf(section)
+      if (missing <= 0) break
+      // Claude Code keeps a slot for a tutorial or a setting, so recent releases do not take both.
+      const remaining = section === 'claude_code' && index === 0 ? Math.min(1, missing) : missing
+      const target = countOf(section) + remaining
       const available = pool.filter((c) => !consumed.has(normalizeUrl(c.url)))
       if (available.length === 0) continue
 
@@ -88,6 +92,7 @@ export async function generateIssue(
         section,
         shortlistSize: remaining * 2,
         minScore: section === 'news' ? options.minScore : undefined,
+        alreadySelected: written.map((w) => w.item.title),
       })
       usage.push(triaged.usage)
       // A story already written in an earlier section is not repeated here, whatever its source.
@@ -99,7 +104,7 @@ export async function generateIssue(
       // Failed picks are replaced by the next reserve pick, so the section stays full.
       await Promise.all(fresh.slice(0, remaining).filter(isFree).map((p) => attempt(section, p)))
       for (const pick of fresh.slice(remaining)) {
-        if (countOf(section) >= SECTION_COUNTS[section]) break
+        if (countOf(section) >= target) break
         if (isFree(pick)) await attempt(section, pick)
       }
     }

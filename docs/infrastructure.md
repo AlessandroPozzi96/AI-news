@@ -36,6 +36,10 @@ Statut : phases 1 à 5 réalisées ; phase 6 en cours. Révision du 2026-11-07 :
 | `wrangler.jsonc` (variable, non secrète) | `GITHUB_REPO` | Dépôt dans lequel le workflow est lancé |
 | GitHub Actions | `CF_*`, `D1_DATABASE_ID`, `ANTHROPIC_API_KEY`, `RESEND_API_KEY`, `UNSUBSCRIBE_SECRET`, `ADMIN_EMAIL` | Pipeline |
 
+## Ordre de mise en production
+
+`npm run db:migrate:remote` d'abord, puis fusion dans `master` et `npm run deploy`. Le pipeline écrit la colonne `section` (migration 0004) : sans elle, l'enregistrement du numéro échoue.
+
 ## Pipeline hebdomadaire
 
 Déclenché le vendredi à 18:00 (Europe/Paris) par défaut ; l'envoi part quelques minutes après, le temps de la génération.

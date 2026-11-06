@@ -44,7 +44,7 @@ td,th{text-align:left;padding:10px 6px;border-top:1px solid var(--line);vertical
 th{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;border-top:0}
 .msg{padding:10px 14px;border-radius:10px;background:var(--surface);color:var(--text);margin:16px 0}
 .msg.err{color:var(--error)}
-.foot{margin-top:72px;padding:20px 0 40px;border-top:1px solid var(--line);font-size:14px;color:var(--muted);display:flex;flex-wrap:wrap;gap:12px 24px;align-items:center;justify-content:space-between}
+.foot{max-width:620px;margin:72px auto 0;padding:20px 20px 40px;border-top:1px solid var(--line);font-size:14px;color:var(--muted);display:flex;flex-wrap:wrap;gap:12px 24px;align-items:center;justify-content:space-between}
 .foot a{color:var(--muted)}
 .theme{display:flex;flex-wrap:wrap;align-items:center;gap:4px}
 .theme[hidden]{display:none}
@@ -185,7 +185,7 @@ export function ItemPage(props: { issue: RenderIssue; item: IssueItem; links: Li
 
       {href ? (
         <a class="btn" href={href} rel="noopener noreferrer" target="_blank">
-          {t.source} · {item.sourceName} ↗
+          {t.source} ↗
         </a>
       ) : null}
     </Layout>

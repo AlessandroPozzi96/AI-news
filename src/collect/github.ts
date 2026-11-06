@@ -101,9 +101,10 @@ export function githubPopular(
       gather(topics, async (topic) => {
         const pushed = new Date(Date.now() - options.activeWithinDays * 86_400_000).toISOString().slice(0, 10)
         const q = encodeURIComponent(`topic:${topic} stars:>=${options.minStars} pushed:>${pushed}`)
+        // A wide page: published repositories leave the pool for good, so ten would run out within months.
         const data = await getJson<RepoSearchResponse>(
           ctx.fetch,
-          `https://api.github.com/search/repositories?q=${q}&sort=stars&order=desc&per_page=10`,
+          `https://api.github.com/search/repositories?q=${q}&sort=stars&order=desc&per_page=50`,
           githubHeaders(ctx),
         )
         return data.items.map((r) => ({

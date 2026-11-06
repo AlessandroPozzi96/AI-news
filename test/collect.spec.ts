@@ -9,7 +9,7 @@ import { parseFeed, rssFeeds } from '../src/collect/rss'
 import { loadSeenUrls, markUrlsSeen } from '../src/collect/seen'
 import { HN_QUERIES } from '../src/collect/sources'
 import { normalizeUrl, stripHtml } from '../src/collect/text'
-import type { CollectContext, Collector } from '../src/collect/types'
+import type { Candidate, CollectContext, Collector } from '../src/collect/types'
 
 const SINCE = new Date('2026-10-25T00:00:00Z')
 
@@ -162,6 +162,20 @@ describe('collectAll', () => {
     const res = await collectAll([make('a', ['https://x.test/1']), make('b', [], { throws: true })], ctx({}))
     expect(res.candidates).toHaveLength(1)
     expect(res.errors).toEqual([{ source: 'b', message: 'boom' }])
+  })
+
+  it('keeps the undated version when a url comes from both a dated and an undated source', async () => {
+    const base = { title: 'repo', url: 'https://github.com/a/b', excerpt: '', publishedAt: '2026-11-01T00:00:00Z' }
+    const dated: Candidate = { ...base, source: 'github-topic:x' }
+    const undated: Candidate = { ...base, source: 'catalogue', evergreen: true }
+    const collector = (candidate: Candidate): Collector => ({
+      name: candidate.source,
+      collect: async () => ({ candidates: [candidate], errors: [] }),
+    })
+    for (const order of [[dated, undated], [undated, dated]]) {
+      const { candidates } = await collectAll(order.map(collector), { since: new Date(0), fetch })
+      expect(candidates.map((c) => c.source)).toEqual(['catalogue'])
+    }
   })
 
   it('dedupes across sources by normalized url and sorts newest first', async () => {

@@ -32,12 +32,12 @@ export function linksFor(issueId: string, origin: string): Links {
 
 export const webRoutes = new Hono<Env>()
 
-// Static and identical for everyone, so it can be cached for a day. It sets no cookie and reads none.
+// Static and identical for everyone. Short cache: it depends on the markup of the pages, cached for an hour.
 webRoutes.get('/theme.js', () =>
   new Response(THEME_SCRIPT, {
     headers: {
       'Content-Type': 'text/javascript; charset=utf-8',
-      'Cache-Control': 'public, max-age=86400',
+      'Cache-Control': 'public, max-age=300',
       'X-Content-Type-Options': 'nosniff',
     },
   }),

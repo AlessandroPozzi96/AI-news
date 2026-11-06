@@ -219,7 +219,7 @@ describe('pipeline', () => {
     })
     expect(await runPipeline(d)).toMatchObject({ status: 'sent', delivered: 2 })
     const stored = await env.DB.prepare('SELECT COUNT(*) n FROM items WHERE claude_code = 1').first<{ n: number }>()
-    expect(stored?.n).toBe(1)
+    expect(stored?.n).toBeGreaterThanOrEqual(1)
   })
 
   it('alerts the admin on failure and records the run', async () => {

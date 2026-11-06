@@ -54,7 +54,7 @@ Rules:
 const CRITERIA: Record<Section, string> = {
   news: `Section: news. Choose important recent progress in AI and AI agents in general, published in the last 7 days: new models, meaningful capability changes, new or trending tools, changes in best practices for coding agents, security advisories. Claude Code items are welcome but not required. Skip general AI news that does not matter to software development.`,
   must_have: `Section: must_have. Choose tools, MCP servers, skills, hooks, prompting or programming techniques that every developer using AI agents should have: the ones that are indispensable. Recency does not matter: these items are timeless. Skip news about releases, marketing pages and anything a developer does not need to install or use.`,
-  claude_code: `Section: claude_code. Choose items strictly about Claude Code: a novelty (a new feature or release), a tutorial, a useful setting, a token-saving tip, or another way to run it. Prefer recent items; documentation pages are the fallback for quiet weeks. Skip anything that does not concern Claude Code.`,
+  claude_code: `Section: claude_code. Choose items strictly about Claude Code: a novelty (a new feature or release), a tutorial, a useful setting, a token-saving tip, or another way to run it. Prefer recent items; documentation pages are the fallback for quiet weeks. Skip anything that does not concern Claude Code itself: the Agent SDKs, MCP in general and other products do not qualify.`,
 }
 
 function renderCandidates(candidates: Candidate[]): string {
@@ -78,14 +78,18 @@ function renderCandidates(candidates: Candidate[]): string {
 export async function triage(
   llm: Llm,
   candidates: Candidate[],
-  options: { section: Section; shortlistSize: number; minScore?: number },
+  options: { section: Section; shortlistSize: number; minScore?: number; alreadySelected?: string[] },
 ): Promise<{ picks: Pick[]; usage: Usage }> {
   const dated = candidates.filter((c) => !c.evergreen).slice(0, MAX_CANDIDATES)
   const pool = [...dated, ...candidates.filter((c) => c.evergreen)]
+  // Each section is a separate call, so story ids cannot be compared across sections: the model compares the topics.
+  const selected = options.alreadySelected?.length
+    ? `\n\nAlready selected in this issue, do not choose anything about the same event or subject:\n<already_selected>\n${options.alreadySelected.join('\n')}\n</already_selected>`
+    : ''
   const { data, usage } = await llm.generate({
     tier: 'triage',
     system: `${SYSTEM}\n\n${CRITERIA[options.section]}`,
-    user: `Section: ${options.section}\nReturn a shortlist of up to ${options.shortlistSize} items, using each item's number as "id".\n\n<candidates>\n${renderCandidates(pool)}\n</candidates>`,
+    user: `Section: ${options.section}\nReturn a shortlist of up to ${options.shortlistSize} items, using each item's number as "id".\n\n<candidates>\n${renderCandidates(pool)}\n</candidates>${selected}`,
     schema: TriageSchema,
     maxTokens: 8000,
   })
