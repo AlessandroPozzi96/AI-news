@@ -17,16 +17,17 @@ Chaque élément porte une catégorie parmi : `modèle`, `skill/outil`, `bonne p
 ## F1 — E-mail
 
 - Envoi **100 % automatique**, sans validation préalable.
-- Contient **N éléments** (5 au départ, 10 possible).
-- Chaque élément : titre accrocheur + résumé de 1 à 2 phrases + catégorie.
+- Contient **7 éléments**, en trois sections dans cet ordre : **3 actualités**, **2 indispensables** (outils, serveurs MCP, skills, techniques), **2 Claude Code** (nouveautés, tutoriels, réglages). Chaque section a un titre discret ; un numéro sans section (ancien) n'en a pas.
+- Mise en page sobre : en-tête avec le nom et la date seulement, titres de section discrets, un titre et une phrase par élément, lien discret « Lire la suite ». Aucun chiffre, aucune étiquette.
 - Un clic sur un élément ouvre sa page de détails.
 - Langue : **français par défaut**, configurable.
 - Lien de désinscription dans chaque e-mail.
 
 ## F2 — Page de détails d'un élément
 
-- Titre, résumé étendu, lien vers la source originale.
-- Si pertinent : commandes d'installation / d'utilisation.
+- Grand titre, courte introduction (2 phrases), 3 à 4 points clés, commandes (blocs clairs), « Pourquoi ça compte », lien vers la source originale.
+- Même mise en page sobre que l'e-mail ; sans étiquettes, cartes ni bordures.
+- Thème : clair par défaut, suit l'appareil ; choix Auto / Clair / Sombre dans le pied de page (sans JavaScript, le sélecteur est caché et le thème reste celui de l'appareil).
 - URL stable et publique, de la forme `/issue/<semaine>/<item>`.
 - Forme finale (artifact ou site web) : site servi par l'infrastructure (voir `infrastructure.md`).
 
@@ -34,15 +35,18 @@ Chaque élément porte une catégorie parmi : `modèle`, `skill/outil`, `bonne p
 
 - **Destinataires** : lister, ajouter, supprimer, activer/désactiver (au départ : une seule adresse, la mienne).
 - **Fréquence d'envoi** : jour(s) et rythme configurables (hebdomadaire par défaut).
-- **Nombre d'éléments** par e-mail : 5 ou 10.
 - **Langue** de la newsletter : français par défaut, option pour en changer (anglais au minimum).
-- **Actions** : « envoyer maintenant », prévisualiser le prochain numéro.
-- Historique des numéros envoyés.
+- **Actions** :
+  - « Envoyer maintenant » : génère un **nouveau** numéro et l'envoie tout de suite à tous les destinataires actifs. Pas de limite de nombre, pas de confirmation. Le numéro porte un suffixe (`2026-S45-2`, puis `-3`…) et n'interfère pas avec l'envoi automatique de la semaine.
+  - Prévisualiser le prochain numéro (à faire).
+- Historique des numéros envoyés et des exécutions.
 
 ## F4 — Génération
 
-- Collecte depuis des sources définies, dédoublonnage, sélection par pertinence, rédaction dans la langue configurée.
-- Un élément déjà publié dans un numéro précédent n'est pas republié.
+- Collecte depuis des sources datées (7 derniers jours) et non datées (catalogue, dépôts populaires, documentation Claude Code).
+- Sélection par section (ADR-0003) : un tri par section, avec ses propres critères ; une même histoire n'apparaît jamais deux fois.
+- Un élément déjà publié dans un numéro précédent n'est pas republié, datée ou non.
+- Rédaction dans la langue configurée, avec une consigne propre à chaque section.
 
 ## Hors périmètre (pour l'instant)
 
@@ -55,5 +59,5 @@ Chaque élément porte une catégorie parmi : `modèle`, `skill/outil`, `bonne p
 - Envoi par défaut : **vendredi 18:00, heure de Paris**, configurable ; le numéro couvre les 7 derniers jours.
 - Langues supportées : **français et anglais**.
 - Sources de collecte : liste définie dans `infrastructure.md`, extensible par configuration.
-- Focus Claude Code : au moins 2 éléments sur 5 le concernent, s'il y en a.
+- Structure fixe 3 / 2 / 2 (ADR-0003). Envoi seulement si le numéro compte au moins 3 éléments dont 1 Claude Code ; sinon échec et alerte, rien n'est envoyé.
 - Pages de détails publiques et non indexées.

@@ -1,12 +1,11 @@
 import type { Settings } from '../pipeline/settings'
 
-export type EditableSettings = Pick<Settings, 'sendDay' | 'sendHour' | 'frequencyWeeks' | 'itemsPerIssue' | 'language'>
+export type EditableSettings = Pick<Settings, 'sendDay' | 'sendHour' | 'frequencyWeeks' | 'language'>
 
 export const LIMITS = {
   sendDay: [1, 7],
   sendHour: [0, 23],
   frequencyWeeks: [1, 4],
-  itemsPerIssue: [3, 10],
 } as const
 
 function intInRange(raw: unknown, [min, max]: readonly [number, number]): number | null {
@@ -22,13 +21,11 @@ export function parseSettingsForm(
   const sendDay = intInRange(form.send_day, LIMITS.sendDay)
   const sendHour = intInRange(form.send_hour, LIMITS.sendHour)
   const frequencyWeeks = intInRange(form.frequency_weeks, LIMITS.frequencyWeeks)
-  const itemsPerIssue = intInRange(form.items_per_issue, LIMITS.itemsPerIssue)
   if (sendDay === null) return { ok: false, error: 'Jour invalide.' }
   if (sendHour === null) return { ok: false, error: 'Heure invalide (0-23).' }
   if (frequencyWeeks === null) return { ok: false, error: 'Fréquence invalide (1 à 4 semaines).' }
-  if (itemsPerIssue === null) return { ok: false, error: "Nombre d'articles invalide (3 à 10)." }
   if (form.language !== 'fr' && form.language !== 'en') return { ok: false, error: 'Langue invalide.' }
-  return { ok: true, values: { sendDay, sendHour, frequencyWeeks, itemsPerIssue, language: form.language } }
+  return { ok: true, values: { sendDay, sendHour, frequencyWeeks, language: form.language } }
 }
 
 export async function saveSettings(db: D1Database, v: EditableSettings): Promise<void> {
@@ -39,7 +36,6 @@ export async function saveSettings(db: D1Database, v: EditableSettings): Promise
     upsert.bind('send_day', String(v.sendDay)),
     upsert.bind('send_hour', String(v.sendHour)),
     upsert.bind('frequency_weeks', String(v.frequencyWeeks)),
-    upsert.bind('items_per_issue', String(v.itemsPerIssue)),
     upsert.bind('language', v.language),
   ])
 }

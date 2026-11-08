@@ -8,8 +8,13 @@ export function isoWeekId(date: Date): string {
   return `${d.getUTCFullYear()}-S${String(week).padStart(2, '0')}`
 }
 
-export const ISSUE_ID_PATTERN = /^\d{4}-S\d{2}$/
+/**
+ * `2026-S45` is the automatic issue of that week. Manual issues (sent from the admin dashboard)
+ * add a suffix from 2 on: `2026-S45-2`, `2026-S45-3`... so they never collide with the automatic one.
+ */
+export const ISSUE_ID_PATTERN = /^\d{4}-S\d{2}(?:-[1-9]\d*)?$/
 
+/** Week number of an issue id, automatic or manual. */
 export function weekNumber(issueId: string): number {
-  return Number(issueId.slice(-2))
+  return Number(issueId.slice(6, 8))
 }

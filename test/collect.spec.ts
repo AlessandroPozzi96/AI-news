@@ -1,12 +1,15 @@
 import { applyD1Migrations, env } from 'cloudflare:test'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { collectAll } from '../src/collect/collect'
-import { githubReleases } from '../src/collect/github'
+import { parseLlmsTxt, claudeDocs, CLAUDE_DOCS_SOURCE } from '../src/collect/claude-docs'
+import { githubPopular, githubReleases } from '../src/collect/github'
 import { hackerNews } from '../src/collect/hackernews'
+import { CATALOGUE_SOURCE, MUST_HAVE_CATALOGUE, mustHaveCatalogue } from '../src/collect/must-have'
 import { parseFeed, rssFeeds } from '../src/collect/rss'
 import { loadSeenUrls, markUrlsSeen } from '../src/collect/seen'
+import { HN_QUERIES } from '../src/collect/sources'
 import { normalizeUrl, stripHtml } from '../src/collect/text'
-import type { CollectContext, Collector } from '../src/collect/types'
+import type { Candidate, CollectContext, Collector } from '../src/collect/types'
 
 const SINCE = new Date('2026-10-25T00:00:00Z')
 
@@ -161,6 +164,20 @@ describe('collectAll', () => {
     expect(res.errors).toEqual([{ source: 'b', message: 'boom' }])
   })
 
+  it('keeps the undated version when a url comes from both a dated and an undated source', async () => {
+    const base = { title: 'repo', url: 'https://github.com/a/b', excerpt: '', publishedAt: '2026-11-01T00:00:00Z' }
+    const dated: Candidate = { ...base, source: 'github-topic:x' }
+    const undated: Candidate = { ...base, source: 'catalogue', evergreen: true }
+    const collector = (candidate: Candidate): Collector => ({
+      name: candidate.source,
+      collect: async () => ({ candidates: [candidate], errors: [] }),
+    })
+    for (const order of [[dated, undated], [undated, dated]]) {
+      const { candidates } = await collectAll(order.map(collector), { since: new Date(0), fetch })
+      expect(candidates.map((c) => c.source)).toEqual(['catalogue'])
+    }
+  })
+
   it('dedupes across sources by normalized url and sorts newest first', async () => {
     const res = await collectAll(
       [
@@ -176,6 +193,86 @@ describe('collectAll', () => {
   it('drops urls already seen', async () => {
     const res = await collectAll([make('a', ['https://example.com/p', 'https://example.com/q'])], ctx({}), new Set(['https://example.com/p']))
     expect(res.candidates.map((c) => c.url)).toEqual(['https://example.com/q'])
+  })
+})
+
+describe('undated sources', () => {
+  it('lists the catalogue with Graphify first, each entry as an undated candidate', async () => {
+    expect(MUST_HAVE_CATALOGUE[0].url).toBe('https://github.com/Graphify-Labs/graphify')
+    expect(MUST_HAVE_CATALOGUE.every((e) => e.url.startsWith('https://'))).toBe(true)
+    const out = await mustHaveCatalogue().collect(ctx({}))
+    expect(out.errors).toEqual([])
+    expect(out.candidates).toHaveLength(MUST_HAVE_CATALOGUE.length)
+    expect(out.candidates[0]).toMatchObject({ source: CATALOGUE_SOURCE, publishedAt: '', evergreen: true })
+  })
+
+  it('searches popular repositories by stars and recent activity, never by creation date', async () => {
+    let requested = ''
+    const doFetch = (async (input: RequestInfo | URL) => {
+      requested = decodeURIComponent(String(input))
+      return new Response(
+        JSON.stringify({
+          items: [
+            {
+              full_name: 'a/tool',
+              html_url: 'https://github.com/a/tool',
+              description: 'A tool',
+              stargazers_count: 900,
+              created_at: '2019-01-01T00:00:00Z',
+            },
+          ],
+        }),
+      )
+    }) as typeof fetch
+    const out = await githubPopular(['claude-code'], { minStars: 500, activeWithinDays: 90 }).collect({ since: SINCE, fetch: doFetch })
+    expect(requested).toContain('topic:claude-code')
+    expect(requested).toContain('stars:>=500')
+    expect(requested).toContain('pushed:>')
+    expect(requested).toContain('sort=stars')
+    expect(requested).not.toContain('created:>')
+    expect(out.candidates[0]).toMatchObject({ source: 'github-popular:claude-code', evergreen: true, publishedAt: '' })
+  })
+
+  it('reads the Claude Code docs index and keeps settings and tutorial pages', () => {
+    const llms = `# Claude Code Docs
+- [Hooks reference](https://code.claude.com/docs/en/hooks.md): Hook events and configuration.
+- [Changelog](https://code.claude.com/docs/en/changelog.md): Release notes.
+- [Settings](https://code.claude.com/docs/en/settings.md): Configure Claude Code with settings.json.
+- [Common workflows](https://code.claude.com/docs/fr/common-workflows.md): Other language.`
+    const docs = parseLlmsTxt(llms)
+    expect(docs.map((d) => d.title)).toEqual(['Hooks reference', 'Settings'])
+    expect(docs[1]).toMatchObject({ url: 'https://code.claude.com/docs/en/settings.md', source: CLAUDE_DOCS_SOURCE, evergreen: true, publishedAt: '' })
+  })
+
+  it('collects the docs index as undated candidates', async () => {
+    const llms = '- [Hooks reference](https://code.claude.com/docs/en/hooks.md): Hook events.'
+    const out = await claudeDocs('https://code.claude.com/docs/llms.txt', 10).collect(ctx({ 'https://code.claude.com/docs/llms.txt': llms }))
+    expect(out.candidates).toHaveLength(1)
+    expect(out.candidates[0].evergreen).toBe(true)
+  })
+
+  it('queries Hacker News for general AI agent topics too', () => {
+    expect(HN_QUERIES).toEqual(expect.arrayContaining(['claude code', 'AI agents', 'Model Context Protocol']))
+  })
+
+  it('drops an undated candidate once its url is seen, so a published must-have is never proposed again', async () => {
+    const entry = MUST_HAVE_CATALOGUE[0]
+    const out = await mustHaveCatalogue().collect(ctx({}))
+    const seen = new Set([normalizeUrl(entry.url)])
+    const res = await collectAll([{ name: 'catalogue', collect: async () => out }], ctx({}), seen)
+    expect(res.candidates.map((c) => c.url)).not.toContain(entry.url)
+  })
+
+  it('sorts undated candidates after the dated ones', async () => {
+    const dated: Collector = {
+      name: 'dated',
+      collect: async () => ({
+        candidates: [{ title: 'news', url: 'https://x.test/n', excerpt: '', source: 'dated', publishedAt: '2026-10-31T00:00:00Z' }],
+        errors: [],
+      }),
+    }
+    const res = await collectAll([mustHaveCatalogue(), dated], ctx({}))
+    expect(res.candidates[0].source).toBe('dated')
   })
 })
 

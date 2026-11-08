@@ -1,4 +1,4 @@
-import { CATEGORIES, DetailsSchema, type IssueItem, type Language } from '../generate/types'
+import { CATEGORIES, DetailsSchema, SECTIONS, type IssueItem, type Language, type Section } from '../generate/types'
 
 export type StoredIssue = {
   id: string
@@ -12,6 +12,7 @@ export type StoredIssue = {
 type IssueRow = { id: string; language: Language; status: string; created_at: string; sent_at: string | null }
 type ItemRow = {
   position: number
+  section: string
   category: string
   title: string
   summary: string
@@ -25,8 +26,11 @@ function toItem(row: ItemRow): IssueItem | null {
   const category = CATEGORIES.find((c) => c === row.category)
   const details = DetailsSchema.safeParse(JSON.parse(row.details_json))
   if (!category || !details.success) return null
+  // Issues written before sections have an empty section: they are shown without headings.
+  const section = SECTIONS.find((s): s is Section => s === row.section)
   return {
     position: row.position,
+    ...(section ? { section } : {}),
     category,
     claudeCode: row.claude_code === 1,
     title: row.title,
@@ -65,6 +69,30 @@ export async function setIssueStatus(db: D1Database, id: string, status: 'sendin
 
 export const PUBLIC_STATUSES = ['sending', 'sent']
 
+/** Manual issue ids of a week (`2026-S45-2`...), highest suffix first, as `{ id, status }`. */
+async function manualIssuesOf(db: D1Database, week: string): Promise<{ id: string; status: string; n: number }[]> {
+  const { results } = await db
+    .prepare('SELECT id, status FROM issues WHERE id GLOB ?')
+    .bind(`${week}-[0-9]*`)
+    .all<{ id: string; status: string }>()
+  return results
+    .map((r) => ({ ...r, n: Number(r.id.slice(week.length + 1)) }))
+    .filter((r) => Number.isInteger(r.n) && r.n >= 2)
+    .sort((a, b) => b.n - a.n)
+}
+
+/** The most recent manual issue of a week, if any (its status tells whether a send went through). */
+export async function latestManualIssue(db: D1Database, week: string): Promise<{ id: string; status: string } | null> {
+  const [latest] = await manualIssuesOf(db, week)
+  return latest ? { id: latest.id, status: latest.status } : null
+}
+
+/** The next free manual id of a week: `-2` when none exists yet, then `-3`... */
+export async function nextManualIssueId(db: D1Database, week: string): Promise<string> {
+  const [latest] = await manualIssuesOf(db, week)
+  return `${week}-${latest ? latest.n + 1 : 2}`
+}
+
 /** Saves (or re-saves) a draft issue. A sent issue is immutable: its public links must not change. */
 export async function saveIssue(
   db: D1Database,
@@ -76,8 +104,8 @@ export async function saveIssue(
   if (existing && existing.status !== 'draft') throw new Error(`Issue ${id} is already ${existing.status}`)
 
   const insertItem = db.prepare(
-    `INSERT INTO items (issue_id, position, category, title, summary, details_json, source_url, source_name, claude_code)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO items (issue_id, position, section, category, title, summary, details_json, source_url, source_name, claude_code)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
   await db.batch([
     db.prepare('INSERT INTO issues (id, language) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET language = excluded.language').bind(id, language),
@@ -86,6 +114,7 @@ export async function saveIssue(
       insertItem.bind(
         id,
         it.position,
+        it.section ?? '',
         it.category,
         it.title,
         it.summary,

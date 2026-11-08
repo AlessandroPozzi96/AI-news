@@ -11,6 +11,7 @@ import {
   saveSettings,
   setSubscriberActive,
 } from '../admin/settings'
+import { dispatchNewsletter } from '../admin/dispatch'
 import type { Env } from '../env'
 import { loadSettings } from '../pipeline/settings'
 import { AdminPage, LoginPage, type Flash } from './admin-pages'
@@ -20,7 +21,7 @@ const HEADERS = {
   'Content-Type': 'text/html; charset=utf-8',
   'X-Robots-Tag': 'noindex, nofollow',
   'Content-Security-Policy':
-    "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+    "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
   // 'no-referrer' would make browsers drop the Origin header on same-origin POSTs, which the CSRF check relies on.
   'Referrer-Policy': 'same-origin',
   'X-Content-Type-Options': 'nosniff',
@@ -34,6 +35,12 @@ const FLASHES: Record<string, Flash> = {
   updated: { kind: 'ok', text: 'Destinataire mis à jour.' },
   bad_email: { kind: 'err', text: 'Adresse email invalide.' },
   bad_settings: { kind: 'err', text: 'Réglages invalides.' },
+  send_started: {
+    kind: 'ok',
+    text: 'Envoi lancé : le mail part dans quelques minutes. Suivez le résultat dans Dernières exécutions.',
+  },
+  send_unconfigured: { kind: 'err', text: 'Envoi impossible : jeton GitHub ou dépôt non configuré.' },
+  send_failed: { kind: 'err', text: "GitHub a refusé le lancement de l'envoi : vérifiez le jeton." },
 }
 
 const MIN_TOKEN_LENGTH = 16
@@ -109,6 +116,19 @@ adminRoutes.get('/admin', async (c) => {
     recentRuns(c.env.DB),
   ])
   return html(AdminPage({ settings, subscribers, issues, runs, flash: FLASHES[c.req.query('msg') ?? ''] }))
+})
+
+// Asks GitHub to run the pipeline now; the send itself happens in the workflow and shows up in the runs table.
+adminRoutes.post('/admin/send-now', async (c) => {
+  const token = c.env.GH_DISPATCH_TOKEN
+  const repo = c.env.GITHUB_REPO
+  if (!token || !repo) return redirect('/admin?msg=send_unconfigured')
+  try {
+    await dispatchNewsletter(fetch, repo, token)
+  } catch {
+    return redirect('/admin?msg=send_failed')
+  }
+  return redirect('/admin?msg=send_started')
 })
 
 adminRoutes.post('/admin/settings', async (c) => {

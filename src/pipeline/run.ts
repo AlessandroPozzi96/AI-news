@@ -3,7 +3,14 @@ import { loadSeenUrls, markUrlsSeen } from '../collect/seen'
 import { COLLECTORS } from '../collect/sources'
 import type { Collector } from '../collect/types'
 import { generateIssue, MIN_RELEVANCE_SCORE } from '../generate/issue'
-import { getIssue, saveIssue, setIssueStatus, type StoredIssue } from '../issues/store'
+import {
+  getIssue,
+  latestManualIssue,
+  nextManualIssueId,
+  saveIssue,
+  setIssueStatus,
+  type StoredIssue,
+} from '../issues/store'
 import type { Llm } from '../llm/types'
 import { BATCH_SIZE } from '../mail/resend'
 import { signUnsubscribeToken } from '../mail/token'
@@ -12,7 +19,7 @@ import { renderEmail } from '../render/email'
 import type { RenderIssue } from '../render/shared'
 import { linksFor } from '../web/routes'
 import { isDue, weekIdIn } from './schedule'
-import { loadSettings } from './settings'
+import { loadSettings, type Settings } from './settings'
 
 export type PipelineDeps = {
   db: D1Database
@@ -40,8 +47,9 @@ export async function runIfDue(deps: PipelineDeps): Promise<PipelineResult> {
   const settings = await loadSettings(deps.db)
   const issueId = weekIdIn(deps.now, settings.timezone)
   const current = await getIssue(deps.db, issueId)
+  // Manual issues (`2026-S45-2`) are ignored: they must not delay the automatic send.
   const last = await deps.db
-    .prepare("SELECT sent_at FROM issues WHERE status = 'sent' ORDER BY sent_at DESC LIMIT 1")
+    .prepare("SELECT sent_at FROM issues WHERE status = 'sent' AND id GLOB '????-S??' ORDER BY sent_at DESC LIMIT 1")
     .first<{ sent_at: string }>()
   const lastSentAt = last ? new Date(`${last.sent_at.replace(' ', 'T')}Z`) : null
   const due = isDue(deps.now, settings, { currentWeekSent: current?.status === 'sent', lastSentAt })
@@ -64,11 +72,28 @@ async function failedRuns(db: D1Database, issueId: string): Promise<number> {
   return row?.n ?? 0
 }
 
-/** Generates (if needed) and sends the current week's issue. Safe to call again after a failure. */
+/** Automatic issue of the current week: generates (if needed) and sends it. Safe to call again after a failure. */
 export async function runPipeline(deps: PipelineDeps): Promise<PipelineResult> {
   const settings = await loadSettings(deps.db)
   const issueId = weekIdIn(deps.now, settings.timezone)
+  return runIssue(deps, settings, issueId, { minItems: MIN_ITEMS, requireClaudeCode: true })
+}
 
+/**
+ * Manual send ("Envoyer maintenant"), ignoring the schedule. Resumes the latest manual issue of the week
+ * when it was not fully sent, otherwise creates the next manual id. The automatic issue is never touched.
+ */
+export async function runNow(deps: PipelineDeps): Promise<PipelineResult> {
+  const settings = await loadSettings(deps.db)
+  const week = weekIdIn(deps.now, settings.timezone)
+  const latest = await latestManualIssue(deps.db, week)
+  const issueId = latest && latest.status !== 'sent' ? latest.id : await nextManualIssueId(deps.db, week)
+  return runIssue(deps, settings, issueId, { minItems: 1, requireClaudeCode: false })
+}
+
+type SendRule = { minItems: number; requireClaudeCode: boolean }
+
+async function runIssue(deps: PipelineDeps, settings: Settings, issueId: string, rule: SendRule): Promise<PipelineResult> {
   const existing = await getIssue(deps.db, issueId)
   if (existing?.status === 'sent') return { status: 'skipped', issueId, reason: 'already sent' }
 
@@ -100,17 +125,16 @@ export async function runPipeline(deps: PipelineDeps): Promise<PipelineResult> {
         seen,
       )
       const generated = await generateIssue({ llm: deps.llm, fetch: deps.fetch }, collected.candidates, {
-        count: settings.itemsPerIssue,
         language: settings.language,
-        minClaudeCode: Math.ceil(settings.itemsPerIssue * 0.4),
-        maxClaudeCode: Math.ceil(settings.itemsPerIssue * 0.8),
         minScore: MIN_RELEVANCE_SCORE,
       })
       costUsd = generated.costUsd
       if (generated.items.length === 0) throw new Error('No item could be generated, nothing to send')
-      const required = Math.min(MIN_ITEMS, settings.itemsPerIssue)
-      if (generated.items.length < required) {
-        throw new Error(`Only ${generated.items.length} relevant item(s) generated, at least ${required} required: nothing to send`)
+      const claudeCode = generated.items.filter((i) => i.claudeCode).length
+      if (generated.items.length < rule.minItems || (rule.requireClaudeCode && claudeCode === 0)) {
+        throw new Error(
+          `Only ${generated.items.length} item(s) generated (${claudeCode} Claude Code), at least ${rule.minItems}${rule.requireClaudeCode ? ' with one Claude Code item' : ''} required: nothing to send`,
+        )
       }
       await saveIssue(deps.db, issueId, settings.language, generated.items)
       await markUrlsSeen(deps.db, generated.consumedUrls, true)

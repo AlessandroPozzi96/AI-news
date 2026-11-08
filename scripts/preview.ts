@@ -4,6 +4,7 @@ import { isoWeekId } from '../src/issues/week'
 import { renderEmail } from '../src/render/email'
 import type { Links, RenderIssue } from '../src/render/shared'
 import { IssuePage, ItemPage, renderPage } from '../src/web/pages'
+import { THEME_SCRIPT } from '../src/web/theme'
 
 const arg = (name: string, fallback: string) => {
   const i = process.argv.indexOf(`--${name}`)
@@ -27,10 +28,12 @@ const links: Links = {
   issue: 'index.html',
   item: (position) => `item-${position}.html`,
   unsubscribe: '#unsubscribe',
+  theme: 'theme.js',
 }
 
 const dir = 'out/preview'
 await mkdir(dir, { recursive: true })
+await writeFile(`${dir}/theme.js`, THEME_SCRIPT)
 const email = renderEmail(issue, links)
 await writeFile(`${dir}/email.html`, email.html)
 await writeFile(`${dir}/email.txt`, `Subject: ${email.subject}\n\n${email.text}`)

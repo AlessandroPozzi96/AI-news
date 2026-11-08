@@ -4,15 +4,17 @@ import { ISSUE_ID_PATTERN } from '../issues/week'
 import { getIssue, PUBLIC_STATUSES } from '../issues/store'
 import type { Links, RenderIssue } from '../render/shared'
 import { IssuePage, ItemPage, NotFoundPage, renderPage } from './pages'
+import { THEME_SCRIPT } from './theme'
 
 type Env = { Bindings: { DB: D1Database } }
 
-// Pages are public by link but must not be indexed; the strict CSP forbids scripts entirely.
+// Pages are public by link but must not be indexed. Scripts are limited to this origin (the theme switch
+// is /theme.js); no inline script, no external resource.
 const HEADERS = {
   'Content-Type': 'text/html; charset=utf-8',
   'X-Robots-Tag': 'noindex, nofollow',
   'Content-Security-Policy':
-    "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
   'Referrer-Policy': 'no-referrer',
   'X-Content-Type-Options': 'nosniff',
 }
@@ -29,6 +31,17 @@ export function linksFor(issueId: string, origin: string): Links {
 }
 
 export const webRoutes = new Hono<Env>()
+
+// Static and identical for everyone. Short cache: it depends on the markup of the pages, cached for an hour.
+webRoutes.get('/theme.js', () =>
+  new Response(THEME_SCRIPT, {
+    headers: {
+      'Content-Type': 'text/javascript; charset=utf-8',
+      'Cache-Control': 'public, max-age=300',
+      'X-Content-Type-Options': 'nosniff',
+    },
+  }),
+)
 
 async function load(db: D1Database, id: string): Promise<{ issue: RenderIssue; sent: boolean } | null> {
   if (!ISSUE_ID_PATTERN.test(id)) return null

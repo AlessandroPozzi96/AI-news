@@ -2,7 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { collectAll } from '../src/collect/collect'
 import { COLLECTORS } from '../src/collect/sources'
 import { generateIssue, MIN_RELEVANCE_SCORE } from '../src/generate/issue'
-import type { Language } from '../src/generate/types'
+import { SECTION_COUNTS, type Language } from '../src/generate/types'
 import { LABELS } from '../src/i18n'
 import { anthropicLlm } from '../src/llm/anthropic'
 
@@ -18,21 +18,19 @@ if (!apiKey) {
 }
 
 const days = Number(arg('days', '7'))
-const count = Number(arg('count', '5'))
 const language = arg('lang', 'fr') as Language
 
 const since = new Date(Date.now() - days * 24 * 3600 * 1000)
-console.log(`Collecting (last ${days} days)…`)
+console.log(`Collecting (last ${days} days, undated sources always)…`)
 const collected = await collectAll(COLLECTORS, { since, fetch, githubToken: process.env.GITHUB_TOKEN || undefined })
 console.log(`${collected.candidates.length} candidates, ${collected.errors.length} source errors`)
 for (const e of collected.errors) console.log(`  source error: ${e.source} - ${e.message}`)
 
-console.log(`Generating ${count} items in ${language}…`)
-const issue = await generateIssue(
-  { llm: anthropicLlm(apiKey), fetch },
-  collected.candidates,
-  { count, language, minClaudeCode: Math.ceil(count * 0.4), maxClaudeCode: Math.ceil(count * 0.8), minScore: MIN_RELEVANCE_SCORE },
-)
+console.log(`Generating ${Object.values(SECTION_COUNTS).reduce((a, b) => a + b, 0)} items in ${language}…`)
+const issue = await generateIssue({ llm: anthropicLlm(apiKey), fetch }, collected.candidates, {
+  language,
+  minScore: MIN_RELEVANCE_SCORE,
+})
 
 const stamp = new Date().toISOString().slice(0, 10)
 await mkdir('out', { recursive: true })
@@ -42,6 +40,9 @@ const labels = LABELS[language]
 const md = issue.items
   .map((it) =>
     [
+      it.position === 1 || it.section !== issue.items[it.position - 2]?.section
+        ? `# ${labels.sections[it.section ?? 'news']}\n`
+        : '',
       `## ${it.position}. ${it.title}`,
       `*${labels.categories[it.category]}${it.claudeCode ? ' · Claude Code' : ''}* — [${it.sourceName}](${it.sourceUrl})`,
       '',

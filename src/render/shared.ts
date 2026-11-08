@@ -1,4 +1,4 @@
-import type { IssueItem, Language } from '../generate/types'
+import type { IssueItem, Language, Section } from '../generate/types'
 
 export type RenderIssue = {
   id: string
@@ -12,6 +12,8 @@ export type Links = {
   issue: string
   item: (position: number) => string
   unsubscribe: string
+  /** Address of the theme script of the pages; defaults to `/theme.js`. */
+  theme?: string
 }
 
 /** Only http(s) links are ever rendered as hrefs; anything else (javascript:, data:) is dropped. */
@@ -22,6 +24,19 @@ export function safeHref(url: string): string | null {
   } catch {
     return null
   }
+}
+
+export type SectionGroup = { section?: Section; items: IssueItem[] }
+
+/** Consecutive items sharing a section, in issue order. Items without a section form one group with no heading. */
+export function groupBySection(items: IssueItem[]): SectionGroup[] {
+  const groups: SectionGroup[] = []
+  for (const item of items) {
+    const last = groups[groups.length - 1]
+    if (last && last.section === item.section) last.items.push(item)
+    else groups.push({ section: item.section, items: [item] })
+  }
+  return groups
 }
 
 export function formatDate(date: Date, locale: string): string {

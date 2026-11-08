@@ -45,6 +45,14 @@ export function AdminPage(props: {
         <h1>Tableau de bord</h1>
         <FlashMessage flash={props.flash} />
 
+        <h2>Envoi immédiat</h2>
+        <p>Génère un nouveau numéro et l'envoie tout de suite à tous les destinataires actifs.</p>
+        <form method="post" action="/admin/send-now">
+          <button class="btn" type="submit">
+            Envoyer maintenant
+          </button>
+        </form>
+
         <h2>Envoi</h2>
         <form method="post" action="/admin/settings">
           <label for="send_day">Jour d'envoi</label>
@@ -67,14 +75,6 @@ export function AdminPage(props: {
           <select id="frequency_weeks" name="frequency_weeks">
             {range(LIMITS.frequencyWeeks).map((n) => (
               <option value={String(n)} selected={s.frequencyWeeks === n}>
-                {n}
-              </option>
-            ))}
-          </select>
-          <label for="items_per_issue">Articles par numéro</label>
-          <select id="items_per_issue" name="items_per_issue">
-            {range(LIMITS.itemsPerIssue).map((n) => (
-              <option value={String(n)} selected={s.itemsPerIssue === n}>
                 {n}
               </option>
             ))}

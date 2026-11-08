@@ -14,3 +14,7 @@ ADMIN_EMAIL=
 
 # Dashboard login token (Worker secret: npx wrangler secret put ADMIN_TOKEN)
 ADMIN_TOKEN=
+
+# "Envoyer maintenant" (Worker secret: npx wrangler secret put GH_DISPATCH_TOKEN). Fine-grained GitHub token
+# limited to this repository, permission Actions: read and write. The repo itself is set in wrangler.jsonc (GITHUB_REPO).
+GH_DISPATCH_TOKEN=

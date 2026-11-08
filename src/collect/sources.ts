@@ -1,5 +1,7 @@
-import { githubReleases, githubTrending } from './github'
+import { CLAUDE_DOCS_INDEX, claudeDocs } from './claude-docs'
+import { githubPopular, githubReleases, githubTrending } from './github'
 import { hackerNews } from './hackernews'
+import { mustHaveCatalogue } from './must-have'
 import { rssFeeds } from './rss'
 import type { Collector } from './types'
 
@@ -15,7 +17,18 @@ export const GITHUB_RELEASE_REPOS = [
 
 export const GITHUB_TRENDING_TOPICS = ['claude-code', 'mcp-server', 'agent-skills', 'claude-skills']
 
-export const HN_QUERIES = ['claude code', 'coding agent', 'mcp server', 'ai agents software']
+/** Stars needed for a popular repository, and the recent activity it must show (days since last push). */
+export const GITHUB_POPULAR = { minStars: 500, activeWithinDays: 90 }
+
+export const HN_QUERIES = [
+  'claude code',
+  'coding agent',
+  'mcp server',
+  'ai agents software',
+  'AI agents',
+  'AI coding assistant',
+  'Model Context Protocol',
+]
 
 export const RSS_FEEDS = [
   // No official Anthropic feed exists; this is a community mirror of anthropic.com/news.
@@ -35,6 +48,9 @@ export const RSS_FEEDS = [
 export const COLLECTORS: Collector[] = [
   githubReleases(GITHUB_RELEASE_REPOS),
   githubTrending(GITHUB_TRENDING_TOPICS, 20),
+  githubPopular(GITHUB_TRENDING_TOPICS, GITHUB_POPULAR),
+  mustHaveCatalogue(),
+  claudeDocs(CLAUDE_DOCS_INDEX, 60),
   hackerNews(HN_QUERIES, 50),
   rssFeeds(RSS_FEEDS),
 ]

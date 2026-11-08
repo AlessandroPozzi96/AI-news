@@ -1,11 +1,11 @@
-import type { Category, Language } from './generate/types'
+import type { Category, Language, Section } from './generate/types'
 
 export const BRAND = 'Dev Agents Weekly'
 
 export type Labels = {
   tagline: string
   categories: Record<Category, string>
-  claudeCode: string
+  sections: Record<Section, string>
   readMore: string
   keyPoints: string
   commands: string
@@ -14,7 +14,10 @@ export type Labels = {
   backToIssue: string
   viewInBrowser: string
   unsubscribe: string
-  footerNote: string
+  theme: string
+  themeAuto: string
+  themeLight: string
+  themeDark: string
   weekLabel: string
   notFound: string
   unsubTitle: string
@@ -34,7 +37,7 @@ export const LABELS: Record<Language, Labels> = {
       command_shortcut: 'Commande',
       other: 'Actu',
     },
-    claudeCode: 'Claude Code',
+    sections: { news: 'Actualités', must_have: 'Indispensables', claude_code: 'Claude Code' },
     readMore: 'Lire la suite',
     keyPoints: 'À retenir',
     commands: 'Commandes',
@@ -43,7 +46,10 @@ export const LABELS: Record<Language, Labels> = {
     backToIssue: 'Retour au numéro',
     viewInBrowser: 'Voir dans le navigateur',
     unsubscribe: 'Se désabonner',
-    footerNote: 'Vous recevez cet e-mail car vous êtes abonné à cette newsletter.',
+    theme: 'Thème',
+    themeAuto: 'Auto',
+    themeLight: 'Clair',
+    themeDark: 'Sombre',
     weekLabel: 'Semaine',
     notFound: 'Page introuvable',
     unsubTitle: 'Se désabonner',
@@ -61,7 +67,7 @@ export const LABELS: Record<Language, Labels> = {
       command_shortcut: 'Command',
       other: 'News',
     },
-    claudeCode: 'Claude Code',
+    sections: { news: 'News', must_have: 'Must-haves', claude_code: 'Claude Code' },
     readMore: 'Read more',
     keyPoints: 'Key points',
     commands: 'Commands',
@@ -70,7 +76,10 @@ export const LABELS: Record<Language, Labels> = {
     backToIssue: 'Back to the issue',
     viewInBrowser: 'View in browser',
     unsubscribe: 'Unsubscribe',
-    footerNote: 'You are receiving this email because you subscribed to this newsletter.',
+    theme: 'Theme',
+    themeAuto: 'Auto',
+    themeLight: 'Light',
+    themeDark: 'Dark',
     weekLabel: 'Week',
     notFound: 'Page not found',
     unsubTitle: 'Unsubscribe',
