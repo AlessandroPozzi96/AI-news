@@ -1,11 +1,13 @@
+import { SECTIONS, SECTION_COUNT_RANGE } from '../generate/types'
 import type { Settings } from '../pipeline/settings'
 
-export type EditableSettings = Pick<Settings, 'sendDay' | 'sendHour' | 'frequencyWeeks' | 'language'>
+export type EditableSettings = Pick<Settings, 'sendDay' | 'sendHour' | 'frequencyWeeks' | 'language' | 'sectionCounts'>
 
 export const LIMITS = {
   sendDay: [1, 7],
   sendHour: [0, 23],
   frequencyWeeks: [1, 4],
+  sectionCount: SECTION_COUNT_RANGE,
 } as const
 
 function intInRange(raw: unknown, [min, max]: readonly [number, number]): number | null {
@@ -25,7 +27,16 @@ export function parseSettingsForm(
   if (sendHour === null) return { ok: false, error: 'Heure invalide (0-23).' }
   if (frequencyWeeks === null) return { ok: false, error: 'Fréquence invalide (1 à 4 semaines).' }
   if (form.language !== 'fr' && form.language !== 'en') return { ok: false, error: 'Langue invalide.' }
-  return { ok: true, values: { sendDay, sendHour, frequencyWeeks, language: form.language } }
+  const news = intInRange(form.count_news, LIMITS.sectionCount)
+  const must_have = intInRange(form.count_must_have, LIMITS.sectionCount)
+  const claude_code = intInRange(form.count_claude_code, LIMITS.sectionCount)
+  if (news === null || must_have === null || claude_code === null) {
+    return { ok: false, error: "Nombre d'éléments invalide (1 à 5 par section)." }
+  }
+  return {
+    ok: true,
+    values: { sendDay, sendHour, frequencyWeeks, language: form.language, sectionCounts: { news, must_have, claude_code } },
+  }
 }
 
 export async function saveSettings(db: D1Database, v: EditableSettings): Promise<void> {
@@ -37,6 +48,7 @@ export async function saveSettings(db: D1Database, v: EditableSettings): Promise
     upsert.bind('send_hour', String(v.sendHour)),
     upsert.bind('frequency_weeks', String(v.frequencyWeeks)),
     upsert.bind('language', v.language),
+    ...SECTIONS.map((s) => upsert.bind(`count_${s}`, String(v.sectionCounts[s]))),
   ])
 }
 

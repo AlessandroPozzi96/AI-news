@@ -19,17 +19,33 @@ describe('session', () => {
 })
 
 describe('validation', () => {
-  const good = { send_day: '5', send_hour: '18', frequency_weeks: '1', language: 'fr' }
+  const good = {
+    send_day: '5',
+    send_hour: '18',
+    frequency_weeks: '1',
+    language: 'fr',
+    count_news: '4',
+    count_must_have: '1',
+    count_claude_code: '5',
+  }
 
   it('accepts valid settings and rejects out-of-range or malformed ones', () => {
     expect(parseSettingsForm(good)).toMatchObject({ ok: true, values: { sendDay: 5, sendHour: 18 } })
     expect(parseSettingsForm(good)).toMatchObject({ ok: true, values: { frequencyWeeks: 1, language: 'fr' } })
+    expect(parseSettingsForm(good)).toMatchObject({
+      ok: true,
+      values: { sectionCounts: { news: 4, must_have: 1, claude_code: 5 } },
+    })
     for (const bad of [
       { send_day: '8' },
       { send_hour: '24' },
       { send_hour: '-1' },
       { frequency_weeks: '0' },
       { language: 'de' },
+      { count_news: '0' },
+      { count_must_have: '6' },
+      { count_claude_code: 'two' },
+      { count_news: undefined },
     ]) {
       expect(parseSettingsForm({ ...good, ...bad }).ok).toBe(false)
     }
@@ -110,10 +126,20 @@ describe('admin routes', () => {
   it('saves settings and manages subscribers once logged in', async () => {
     const cookie = await login()
 
-    const saved = await post('/admin/settings', { send_day: '4', send_hour: '9', frequency_weeks: '2', language: 'en' }, cookie)
+    const saved = await post(
+      '/admin/settings',
+      { send_day: '4', send_hour: '9', frequency_weeks: '2', language: 'en', count_news: '4', count_must_have: '1', count_claude_code: '5' },
+      cookie,
+    )
     expect(saved.headers.get('Location')).toBe('/admin?msg=saved')
     const row = await env.DB.prepare("SELECT value FROM settings WHERE key = 'send_hour'").first<{ value: string }>()
     expect(row?.value).toBe('9')
+    const counts = await env.DB.prepare("SELECT key, value FROM settings WHERE key LIKE 'count_%' ORDER BY key").all()
+    expect(counts.results).toEqual([
+      { key: 'count_claude_code', value: '5' },
+      { key: 'count_must_have', value: '1' },
+      { key: 'count_news', value: '4' },
+    ])
 
     const invalid = await post('/admin/settings', { send_day: '9' }, cookie)
     expect(invalid.headers.get('Location')).toBe('/admin?msg=bad_settings')
@@ -138,6 +164,15 @@ describe('admin routes', () => {
     const body = await page.text()
     expect(body).toContain('reader@example.com')
     expect(body).toContain('Réglages enregistrés.')
+    // Each section shows its saved count, selected.
+    for (const [label, name, value] of [
+      ['Actualités', 'count_news', '4'],
+      ['Indispensables', 'count_must_have', '1'],
+      ['Claude Code', 'count_claude_code', '5'],
+    ]) {
+      expect(body).toContain(`<label for="${name}">${label}`)
+      expect(body).toMatch(new RegExp(`<select id="${name}" name="${name}">.*?<option value="${value}" selected`, 's'))
+    }
     expect(body).not.toContain('items_per_issue')
     expect(body).not.toContain('Articles par numéro')
   })
@@ -190,13 +225,17 @@ describe('admin routes', () => {
     it('reports a missing repository like a missing token', async () => {
       expect((await send({ GITHUB_REPO: undefined })).headers.get('Location')).toBe('/admin?msg=send_unconfigured')
     })
-  })
 
-  it('send-now reports when the GitHub token is not configured', async () => {
-    const cookie = await login()
-    const res = await post('/admin/send-now', {}, cookie)
-    expect(res.status).toBe(303)
-    expect(res.headers.get('Location')).toBe('/admin?msg=send_unconfigured')
+    // The token is removed explicitly and fetch is stubbed: a real one in the local .dev.vars must never
+    // let this test reach GitHub and trigger a real send.
+    it('reports when the GitHub token is not configured, without calling GitHub', async () => {
+      const fetchSpy = vi.fn(async () => new Response(null, { status: 204 }))
+      vi.stubGlobal('fetch', fetchSpy)
+      const res = await send({ GH_DISPATCH_TOKEN: undefined })
+      expect(res.status).toBe(303)
+      expect(res.headers.get('Location')).toBe('/admin?msg=send_unconfigured')
+      expect(fetchSpy).not.toHaveBeenCalled()
+    })
   })
 
   it('does not accept a forged session cookie', async () => {
