@@ -17,7 +17,7 @@ Chaque élément porte une catégorie parmi : `modèle`, `skill/outil`, `bonne p
 ## F1 — E-mail
 
 - Envoi **100 % automatique**, sans validation préalable.
-- Contient **7 éléments**, en trois sections dans cet ordre : **3 actualités**, **2 indispensables** (outils, serveurs MCP, skills, techniques), **2 Claude Code** (nouveautés, tutoriels, réglages). Chaque section a un titre discret ; un numéro sans section (ancien) n'en a pas.
+- Contient par défaut **7 éléments**, en trois sections dans cet ordre : **3 actualités**, **2 indispensables** (outils, serveurs MCP, skills, techniques), **2 Claude Code** (nouveautés, tutoriels, réglages). Le nombre d'éléments de chaque section se règle dans le dashboard (F3). Chaque section a un titre discret ; un numéro sans section (ancien) n'en a pas.
 - Mise en page sobre : en-tête avec le nom et la date seulement, titres de section discrets, un titre et une phrase par élément, lien discret « Lire la suite ». Aucun chiffre, aucune étiquette.
 - Un clic sur un élément ouvre sa page de détails.
 - Langue : **français par défaut**, configurable.
@@ -36,6 +36,7 @@ Chaque élément porte une catégorie parmi : `modèle`, `skill/outil`, `bonne p
 - **Destinataires** : lister, ajouter, supprimer, activer/désactiver (au départ : une seule adresse, la mienne).
 - **Fréquence d'envoi** : jour(s) et rythme configurables (hebdomadaire par défaut).
 - **Langue** de la newsletter : français par défaut, option pour en changer (anglais au minimum).
+- **Contenu du numéro** : nombre d'éléments par section (Actualités, Indispensables, Claude Code), de 1 à 5 chacun ; 3 / 2 / 2 par défaut. S'applique dès le numéro suivant, automatique ou manuel.
 - **Actions** :
   - « Envoyer maintenant » : génère un **nouveau** numéro et l'envoie tout de suite à tous les destinataires actifs. Pas de limite de nombre, pas de confirmation. Le numéro porte un suffixe (`2026-S45-2`, puis `-3`…) et n'interfère pas avec l'envoi automatique de la semaine.
   - Prévisualiser le prochain numéro (à faire).
@@ -59,5 +60,5 @@ Chaque élément porte une catégorie parmi : `modèle`, `skill/outil`, `bonne p
 - Envoi par défaut : **vendredi 18:00, heure de Paris**, configurable ; le numéro couvre les 7 derniers jours.
 - Langues supportées : **français et anglais**.
 - Sources de collecte : liste définie dans `infrastructure.md`, extensible par configuration.
-- Structure fixe 3 / 2 / 2 (ADR-0003). Envoi seulement si le numéro compte au moins 3 éléments dont 1 Claude Code ; sinon échec et alerte, rien n'est envoyé.
+- Structure en trois sections, 3 / 2 / 2 par défaut, réglable de 1 à 5 par section (ADR-0003). Envoi seulement si le numéro compte au moins 3 éléments dont 1 Claude Code ; sinon échec et alerte, rien n'est envoyé.
 - Pages de détails publiques et non indexées.

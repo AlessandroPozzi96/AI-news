@@ -21,6 +21,7 @@ Carte rapide : où se trouve chaque fonctionnalité ou concept. À jour avec le 
 | Lecture et écriture des numéros et de leurs éléments en D1 ; prochain identifiant manuel | `src/issues/store.ts` |
 | Pipeline : envoi automatique (`runIfDue`, `runPipeline`), envoi manuel (`runNow`), reprise, alertes | `src/pipeline/run.ts` |
 | Fenêtre d'envoi (jour, heure, fuseau, fréquence) | `src/pipeline/schedule.ts`, `src/pipeline/settings.ts` |
+| Nombre d'éléments par section (défaut, bornes, lecture, formulaire) | `src/generate/types.ts`, `src/pipeline/settings.ts`, `src/admin/settings.ts`, `src/web/admin-pages.tsx` |
 | Point d'entrée du pipeline (cron horaire et `--force`) | `scripts/pipeline.ts`, `.github/workflows/newsletter.yml` |
 | Collecte des sources (GitHub, Hacker News, RSS, Reddit) | `src/collect/*` |
 | Tri et rédaction par LLM, garde-fous de pertinence | `src/generate/*`, `src/llm/*` |

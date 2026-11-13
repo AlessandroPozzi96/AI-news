@@ -127,6 +127,7 @@ async function runIssue(deps: PipelineDeps, settings: Settings, issueId: string,
       const generated = await generateIssue({ llm: deps.llm, fetch: deps.fetch }, collected.candidates, {
         language: settings.language,
         minScore: MIN_RELEVANCE_SCORE,
+        sectionCounts: settings.sectionCounts,
       })
       costUsd = generated.costUsd
       if (generated.items.length === 0) throw new Error('No item could be generated, nothing to send')

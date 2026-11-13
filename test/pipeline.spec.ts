@@ -1,11 +1,11 @@
 import { applyD1Migrations, env, SELF } from 'cloudflare:test'
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { nextManualIssueId } from '../src/issues/store'
 import { signUnsubscribeToken, verifyUnsubscribeToken } from '../src/mail/token'
 import { resendMailer } from '../src/mail/resend'
 import { runIfDue, runNow, runPipeline, type PipelineDeps } from '../src/pipeline/run'
 import { isDue, weekIdIn } from '../src/pipeline/schedule'
-import type { Settings } from '../src/pipeline/settings'
+import { loadSettings, type Settings } from '../src/pipeline/settings'
 import { candidate, collectorOf, evergreenCandidate, fakeLlm, fakeMailer, longPage, triageBySection, writerOk } from './helpers'
 
 const settings: Settings = {
@@ -14,6 +14,7 @@ const settings: Settings = {
   timezone: 'Europe/Paris',
   frequencyWeeks: 1,
   language: 'fr',
+  sectionCounts: { news: 3, must_have: 2, claude_code: 2 },
 }
 
 /** A full pool: dated news and Claude Code candidates, a catalogue and the Claude Code docs. */
@@ -159,6 +160,38 @@ describe('pipeline', () => {
     const run = await env.DB.prepare('SELECT status, llm_cost_usd FROM runs').first<{ status: string; llm_cost_usd: number }>()
     expect(run?.status).toBe('ok')
     expect(run?.llm_cost_usd).toBeGreaterThan(0)
+  })
+
+  describe('section counts from the settings table', () => {
+    const setCounts = (news: string, mustHave: string, claudeCode: string) =>
+      env.DB.prepare(
+        "INSERT INTO settings (key, value) VALUES ('count_news', ?), ('count_must_have', ?), ('count_claude_code', ?)",
+      )
+        .bind(news, mustHave, claudeCode)
+        .run()
+    afterEach(async () => {
+      await env.DB.prepare("DELETE FROM settings WHERE key LIKE 'count_%'").run()
+    })
+
+    it('shapes the generated issue', async () => {
+      await setCounts('1', '1', '3')
+      await runPipeline(deps())
+      const sections = await env.DB.prepare('SELECT section, COUNT(*) AS n FROM items GROUP BY section ORDER BY section').all()
+      expect(sections.results).toEqual([
+        { section: 'claude_code', n: 3 },
+        { section: 'must_have', n: 1 },
+        { section: 'news', n: 1 },
+      ])
+    })
+
+    it('falls back to the default for a stored value that is out of range or not a number', async () => {
+      await setCounts('99', 'abc', '4')
+      expect((await loadSettings(env.DB)).sectionCounts).toEqual({ news: 3, must_have: 2, claude_code: 4 })
+    })
+
+    it('defaults to 3, 2 and 2 when nothing is stored', async () => {
+      expect((await loadSettings(env.DB)).sectionCounts).toEqual({ news: 3, must_have: 2, claude_code: 2 })
+    })
   })
 
   it('never sends the same issue twice', async () => {

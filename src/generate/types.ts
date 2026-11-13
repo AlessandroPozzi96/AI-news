@@ -19,8 +19,11 @@ export type Details = z.infer<typeof DetailsSchema>
 export const SECTIONS = ['news', 'must_have', 'claude_code'] as const
 export type Section = (typeof SECTIONS)[number]
 
-/** Items per section: change the issue shape here only. */
+/** Default items per section; the admin dashboard can override each one (settings `count_<section>`). */
 export const SECTION_COUNTS: Record<Section, number> = { news: 3, must_have: 2, claude_code: 2 }
+
+/** Allowed items per section: at least 1 keeps the send rule reachable, at most 5 bounds the writing cost. */
+export const SECTION_COUNT_RANGE = [1, 5] as const
 
 /** Order of the issue as read: news first. */
 export const SECTION_ORDER: readonly Section[] = SECTIONS

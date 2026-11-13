@@ -1,4 +1,6 @@
 import { LIMITS, type EditableSettings, type IssueRow, type RunRow, type SubscriberRow } from '../admin/settings'
+import { SECTIONS } from '../generate/types'
+import { LABELS } from '../i18n'
 import { Layout } from './pages'
 
 const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
@@ -88,6 +90,24 @@ export function AdminPage(props: {
               English
             </option>
           </select>
+
+          <h2>Contenu du numéro</h2>
+          <p>
+            Un numéro automatique n'est envoyé que s'il compte au moins 3 éléments, dont 1 Claude Code : avec 1 élément par section,
+            le moindre élément manquant annule l'envoi.
+          </p>
+          {SECTIONS.map((section) => (
+            <>
+              <label for={`count_${section}`}>{LABELS.fr.sections[section]} (nombre d'éléments)</label>
+              <select id={`count_${section}`} name={`count_${section}`}>
+                {range(LIMITS.sectionCount).map((n) => (
+                  <option value={String(n)} selected={s.sectionCounts[section] === n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </>
+          ))}
           <button class="btn" type="submit">
             Enregistrer
           </button>

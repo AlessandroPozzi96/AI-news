@@ -16,6 +16,8 @@ export type GenerateOptions = {
   language: Language
   /** Minimum score of a news pick. Defaults to 0 (no filter). */
   minScore?: number
+  /** Items per section. Defaults to `SECTION_COUNTS`. */
+  sectionCounts?: Record<Section, number>
 }
 
 export type GeneratedIssue = {
@@ -63,6 +65,7 @@ export async function generateIssue(
   const consumed = new Set<string>()
   const usedStories = new Set<string>()
   const countOf = (section: Section) => written.filter((w) => w.section === section).length
+  const counts = options.sectionCounts ?? SECTION_COUNTS
 
   const attempt = async (section: Section, pick: Pick): Promise<void> => {
     try {
@@ -80,7 +83,7 @@ export async function generateIssue(
 
   for (const section of SELECTION_ORDER) {
     for (const [index, pool] of sectionPools(section, candidates).entries()) {
-      const missing = SECTION_COUNTS[section] - countOf(section)
+      const missing = counts[section] - countOf(section)
       if (missing <= 0) break
       // Claude Code keeps a slot for a tutorial or a setting, so recent releases do not take both.
       const remaining = section === 'claude_code' && index === 0 ? Math.min(1, missing) : missing

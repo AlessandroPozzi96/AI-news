@@ -293,6 +293,19 @@ describe('generateIssue', () => {
     expect(issue.items.filter((i) => i.claudeCode).map((i) => i.section)).toEqual(['claude_code', 'claude_code'])
   })
 
+  it('follows custom section counts, still keeping one recent Claude Code item before the documentation', async () => {
+    const dated = Array.from({ length: 10 }, (_, i) => cand(i))
+    const undated = [0, 1, 2].flatMap((i) => [evergreen(i, 'catalogue'), evergreen(i, 'claude-docs')])
+    const llm = fakeLlm({ triage: triageBySection({ claude_code: 6, must_have: 4, news: 6 }), writer: writerOk })
+    const issue = await generateIssue({ llm, fetch: page('x').fetch }, [...dated, ...undated], {
+      language: 'fr',
+      sectionCounts: { news: 1, must_have: 1, claude_code: 3 },
+    })
+    expect(issue.items.map((i) => i.section)).toEqual(['news', 'must_have', 'claude_code', 'claude_code', 'claude_code'])
+    const claudeCode = issue.items.filter((i) => i.section === 'claude_code')
+    expect(claudeCode.filter((i) => i.sourceName === 'claude-docs')).toHaveLength(2)
+  })
+
   it('writes items, keeps only verbatim commands and takes the source url from the candidate', async () => {
     const llm = fakeLlm({ triage: onlySection('news', 1), writer: writerOk })
     const issue = await generateIssue({ llm, fetch: page('Install with `npm i -g real-tool` today').fetch }, [cand(0)], {
