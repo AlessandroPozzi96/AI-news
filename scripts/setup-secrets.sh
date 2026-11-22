@@ -212,12 +212,18 @@ stage "Cloudflare: API token for the database"
 say "GitHub Actions reads and writes the D1 database through Cloudflare's API."
 open_url "https://dash.cloudflare.com/profile/api-tokens"
 step "Click 'Create Token', then 'Create Custom Token' (Get started)."
-step "Token name: dev-agents-weekly"
+step "Token name: ai-news"
 step "Permissions: Account  ·  D1  ·  Edit"
 step "Account Resources: Include  ·  your account"
 step "Click 'Continue to summary', then 'Create Token', and copy the token (shown once)."
-CF_ACCOUNT_ID="4714f92ade19dee4aee4a6b307483381"
-D1_DATABASE_ID="c9e71b5b-f86a-46c0-8f5c-3a69fbe24104"
+# The database id is the one the Worker uses: read it from wrangler.jsonc so both sides share one database.
+D1_DATABASE_ID="$(grep -oE '"database_id"[[:space:]]*:[[:space:]]*"[^"]+"' wrangler.jsonc | sed -E 's/.*"([^"]+)"$/\1/')"
+if [[ -z "$D1_DATABASE_ID" ]]; then
+  warn "No database_id in wrangler.jsonc: run 'npx wrangler d1 create ai-news' and set it first."; exit 1
+fi
+note "Database id (from wrangler.jsonc): $D1_DATABASE_ID"
+note "Your account id is shown by 'npx wrangler whoami'."
+ask CF_ACCOUNT_ID "Cloudflare account id:"
 while true; do
   ask_secret CF_API_TOKEN "Paste the Cloudflare token:"
   say "Checking it against the database..."
@@ -240,9 +246,9 @@ set_secret D1_DATABASE_ID "$D1_DATABASE_ID"
 # ── 2. Anthropic ──────────────────────────────────────────────────────────
 stage "Anthropic: API key"
 say "Used to rank and write the items (about \$0.10 per issue)."
-note "Your key is already in .dev.vars from the dry-run: press Enter to keep it."
-step "To use another one: https://console.anthropic.com/settings/keys"
-ask_secret ANTHROPIC_API_KEY "Paste the Anthropic key (or Enter to keep):"
+step "Create one at https://console.anthropic.com/settings/keys (set a monthly spend limit)."
+note "A key already in .dev.vars (from the dry run) is kept if you press Enter."
+ask_secret ANTHROPIC_API_KEY "Paste the Anthropic key:"
 write_env ANTHROPIC_API_KEY "$ANTHROPIC_API_KEY"
 set_secret ANTHROPIC_API_KEY "$ANTHROPIC_API_KEY"
 
@@ -252,7 +258,7 @@ say "Resend sends the e-mails. Without a verified domain it only delivers to the
 say "address of your own Resend account, so use that same address below."
 open_url "https://resend.com/api-keys"
 step "Sign up or log in, then click 'Create API Key'."
-step "Name: dev-agents-weekly  ·  Permission: Sending access  ·  Add."
+step "Name: ai-news  ·  Permission: Sending access  ·  Add."
 step "Copy the key (starts with re_, shown once)."
 ask_secret RESEND_API_KEY "Paste the Resend key:"
 ask ADMIN_EMAIL "E-mail of your Resend account (also receives failure alerts):"
@@ -267,14 +273,29 @@ set_secret ADMIN_EMAIL "$ADMIN_EMAIL"
 # ── 4. Shared settings ────────────────────────────────────────────────────
 stage "GitHub: unsubscribe secret and public settings"
 say "The unsubscribe secret must be identical on Cloudflare and GitHub."
-say "It was generated earlier and set on Cloudflare; this copies it to GitHub."
 UNSUBSCRIBE_SECRET="$(_existing UNSUBSCRIBE_SECRET || true)"
 if [[ -z "$UNSUBSCRIBE_SECRET" ]]; then
-  warn "UNSUBSCRIBE_SECRET not found in .dev.vars; cannot continue."; exit 1
+  UNSUBSCRIBE_SECRET="$(openssl rand -hex 32)"
+  write_env UNSUBSCRIBE_SECRET "$UNSUBSCRIBE_SECRET"
+  note "Generated a new secret."
 fi
 set_secret UNSUBSCRIBE_SECRET "$UNSUBSCRIBE_SECRET"
-PUBLIC_BASE_URL="https://ai-news.devagents-weekly-news.workers.dev"
-MAIL_FROM="Dev Agents Weekly <onboarding@resend.dev>"
+if confirm "Also set it on the Worker (npx wrangler secret put UNSUBSCRIBE_SECRET)?"; then
+  printf '%s' "$UNSUBSCRIBE_SECRET" | npx --yes wrangler secret put UNSUBSCRIBE_SECRET >/dev/null \
+    && printf '  %s✓ set%s Worker secret UNSUBSCRIBE_SECRET\n' "$GREEN" "$RESET" \
+    || { SKIPPED+=("Worker secret UNSUBSCRIBE_SECRET (value in $ENV_FILE)"); warn "wrangler failed"; }
+else
+  SKIPPED+=("Worker secret UNSUBSCRIBE_SECRET: must match the value in $ENV_FILE")
+fi
+note "The Worker URL is printed by 'npm run deploy', e.g. https://ai-news.<subdomain>.workers.dev"
+ask PUBLIC_BASE_URL "Public URL of your Worker:"
+PUBLIC_BASE_URL="${PUBLIC_BASE_URL%/}"
+if [[ ! "$PUBLIC_BASE_URL" =~ ^https:// ]]; then
+  warn "The URL must start with https://."; exit 1
+fi
+note "Without a verified Resend domain, keep the onboarding@resend.dev sender."
+ask MAIL_FROM "Sender (Enter for 'Dev Agents Weekly <onboarding@resend.dev>'):" || true
+MAIL_FROM="${MAIL_FROM:-Dev Agents Weekly <onboarding@resend.dev>}"
 write_env PUBLIC_BASE_URL "$PUBLIC_BASE_URL"
 write_env MAIL_FROM "$MAIL_FROM"
 set_var PUBLIC_BASE_URL "$PUBLIC_BASE_URL"

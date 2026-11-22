@@ -136,7 +136,7 @@ npm run db:migrate:remote
 ### 3. Configure and deploy the Worker
 
 ```bash
-openssl rand -hex 32                     # keep this value: it is UNSUBSCRIBE_SECRET, needed again in step 4
+openssl rand -hex 32                     # save it as UNSUBSCRIBE_SECRET in .dev.vars: needed again in step 4
 npx wrangler secret put UNSUBSCRIBE_SECRET
 npx wrangler secret put ADMIN_TOKEN      # dashboard password, at least 16 characters
 npx wrangler secret put GH_DISPATCH_TOKEN   # optional, enables the "Send now" button (see below)
@@ -166,7 +166,7 @@ gh variable set MAIL_FROM --body "Dev Agents Weekly <onboarding@resend.dev>"
 
 `gh secret set` prompts for the value, so it never appears in your shell history. Each `gh` command applies to the repository of the current directory, which is your fork.
 
-> `scripts/setup-secrets.sh` is the original author's interactive wizard for these steps. It contains the author's account and database ids, so do not run it as is. The commands above do the same thing.
+> **Interactive alternative:** `bash scripts/setup-secrets.sh` walks you through this step in the terminal. It checks the Cloudflare token against your database (id read from `wrangler.jsonc`), sets the GitHub secrets and variables, saves the values in `.dev.vars`, and can add you as the first subscriber. It reuses `UNSUBSCRIBE_SECRET` from `.dev.vars`, or generates one and offers to set it on the Worker.
 
 ### 5. Add yourself as a subscriber and test
 
@@ -204,7 +204,7 @@ If you are an AI coding agent (Claude Code or similar) installing this for a use
   - pasting secret values.
 
   Ask the user to run the interactive commands themselves. In Claude Code, they can type `! <command>` in the prompt. Never ask the user to paste a secret into the chat.
-- **Do not run `scripts/setup-secrets.sh`.** It is interactive and holds the original author's ids. Use the commands in [Full installation](#full-installation).
+- **`scripts/setup-secrets.sh` is interactive:** you cannot drive it yourself. Either ask the user to run it (`! bash scripts/setup-secrets.sh`), or use the `gh secret set` commands in [Full installation](#full-installation) and let the user type each value.
 - **Never commit `.dev.vars`.** It is gitignored and holds real keys. `.dev.vars.example` lists every variable.
 - **Edit `wrangler.jsonc` before deploying:** `database_id` and `GITHUB_REPO` must point to the user's own resources.
 - **Order matters:** run `npm run db:migrate:remote` before `npm run deploy`, and before the first pipeline run.
