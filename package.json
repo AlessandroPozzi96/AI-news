@@ -18,9 +18,9 @@
     "pipeline": "tsx --env-file-if-exists=.dev.vars scripts/pipeline.ts"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "author": "Alessandro Pozzi",
+  "license": "MIT",
+  "description": "Self-hosted weekly newsletter about AI coding agents, written by Claude",
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",
     "fast-xml-parser": "^5.11.2",

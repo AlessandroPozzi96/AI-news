@@ -4,7 +4,7 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-08-01",
   "vars": {
-    "GITHUB_REPO": "AlessandroPozzi96/dev-agents-weekly"
+    "GITHUB_REPO": "AlessandroPozzi96/AI-news"
   },
   "d1_databases": [
     {
